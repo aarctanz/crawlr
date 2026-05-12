@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -27,59 +28,70 @@ func main() {
 	start := time.Now()
 
 	visited := make(map[string]struct{})
-	queue := []string{seed}
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
-	for len(queue) > 0 && len(visited) < maxPages {
-		current := queue[0]
-		queue = queue[1:]
-		if _, ok := visited[current]; ok {
-			continue
-		}
-		visited[current] = struct{}{}
-
-		now := time.Now()
-		links, err, timeSpent := fetch(current)
-		if err != nil {
-			totalTime := time.Since(now)
-			timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
-			fmt.Fprintf(os.Stderr, "ERR %s: %v (%s)\n", current, err, timeSpent)
-			continue
-		}
-		totalTime := time.Since(now)
-		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
-		fmt.Printf("OK %s: %d links (%s)\n", current, len(links), timeSpent)
-		for _, link := range links {
-			if _, ok := visited[link]; !ok {
-				queue = append(queue, link)
-			}
-		}
-	}
+	wg.Add(1)
+	go fetch(seed, visited, &mu, &wg, maxPages)
+	wg.Wait()
 	totalTime := time.Since(start)
 	fmt.Printf("visited %d pages, total time: %.2fs\n", len(visited), totalTime.Seconds())
 }
 
-func fetch(rawUrl string) ([]string, error, string) {
-	now := time.Now()
+func fetch(rawUrl string, visited map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int) {
+	defer wg.Done()
+
+	mu.Lock()
+	if len(visited) >= maxPages {
+		mu.Unlock()
+		return
+	}
+
+	if _, ok := visited[rawUrl]; ok {
+		mu.Unlock()
+		return
+	}
+	visited[rawUrl] = struct{}{}
+	mu.Unlock()
+
+	start := time.Now()
 	resp, err := http.Get(rawUrl)
-	totalTime := time.Since(now)
-	timeSpent := fmt.Sprintf("fetch %dms", totalTime.Milliseconds())
+	fetchTime := time.Since(start)
+
+	timeSpent := fmt.Sprintf("fetch %dms", fetchTime.Milliseconds())
 	if err != nil {
-		return nil, err, timeSpent
+		totalTime := time.Since(start)
+		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %d", resp.StatusCode), timeSpent
+		totalTime := time.Since(start)
+		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+		fmt.Printf("ERR %s: HTTP error: %d (%s)\n", rawUrl, resp.StatusCode, timeSpent)
+		return
 	}
 
 	base, err := url.Parse(resp.Request.URL.String())
 	if err != nil {
-		return nil, err, timeSpent
+		totalTime := time.Since(start)
+		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		return
 	}
 
 	links, err, parseTime := parser(resp, base)
 	timeSpent = fmt.Sprintf("%s | %s", timeSpent, parseTime)
-	return links, err, timeSpent
+	totalTime := time.Since(start)
+	timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
+
+	for _, link := range links {
+		wg.Add(1)
+		go fetch(link, visited, mu, wg, maxPages)
+	}
 }
 
 func parser(resp *http.Response, base *url.URL) ([]string, error, string) {
