@@ -1,16 +1,51 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/net/html"
 )
+
+type CrawlerStats struct {
+	Sample    []TimeSeriesSample
+	StartTime time.Time
+}
+
+type TimeSeriesSample struct {
+	ElapsedS   int64
+	PagesTotal int
+	Success    int
+	HeapMB     float64
+	Goroutines int
+}
+
+func (c *CrawlerStats) update(crawled map[string]struct{}, mu *sync.Mutex, currentTime time.Time, success *atomic.Int32) {
+	var s TimeSeriesSample
+	s.ElapsedS = int64(currentTime.Sub(c.StartTime).Seconds())
+
+	mu.Lock()
+	s.PagesTotal = len(crawled)
+	mu.Unlock()
+
+	s.Success = int(success.Load())
+	s.Goroutines = runtime.NumGoroutine()
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	s.HeapMB = float64(m.HeapAlloc) / 1024 / 1024
+	s.HeapMB = math.Trunc(s.HeapMB*100) / 100
+	c.Sample = append(c.Sample, s)
+}
 
 func main() {
 	if len(os.Args) < 3 {
@@ -25,33 +60,62 @@ func main() {
 		os.Exit(1)
 	}
 
-	start := time.Now()
+	var success atomic.Int32
 
-	visited := make(map[string]struct{})
+	crawled := make(map[string]struct{})
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
+	ticker := time.NewTicker(5 * time.Second)
+	done := make(chan bool)
+
+	start := time.Now()
+	crawlerStats := CrawlerStats{StartTime: start}
+	go func(t time.Ticker) {
+		for {
+			select {
+			case <-done:
+				crawlerStats.update(crawled, &mu, time.Now(), &success)
+				return
+
+			case t := <-t.C:
+				crawlerStats.update(crawled, &mu, t, &success)
+			}
+		}
+	}(*ticker)
+
 	wg.Add(1)
-	go fetch(seed, visited, &mu, &wg, maxPages)
+	go fetch(seed, crawled, &mu, &wg, maxPages, &success)
 	wg.Wait()
+	done <- true
 	totalTime := time.Since(start)
-	fmt.Printf("visited %d pages, total time: %.2fs\n", len(visited), totalTime.Seconds())
+	fmt.Printf("crawled %d pages, total time: %.2fs\n", len(crawled), totalTime.Seconds())
+	fmt.Printf("Success: %d\n", success.Load())
+
+	file, err := os.OpenFile("stats.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
+	encoder := json.NewEncoder(file)
+	encoder.Encode(crawlerStats)
 }
 
-func fetch(rawUrl string, visited map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int) {
+func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32) {
 	defer wg.Done()
 
 	mu.Lock()
-	if len(visited) >= maxPages {
+	if len(crawled) >= maxPages {
 		mu.Unlock()
 		return
 	}
 
-	if _, ok := visited[rawUrl]; ok {
+	if _, ok := crawled[rawUrl]; ok {
 		mu.Unlock()
 		return
 	}
-	visited[rawUrl] = struct{}{}
+	crawled[rawUrl] = struct{}{}
 	mu.Unlock()
 
 	start := time.Now()
@@ -86,11 +150,12 @@ func fetch(rawUrl string, visited map[string]struct{}, mu *sync.Mutex, wg *sync.
 	timeSpent = fmt.Sprintf("%s | %s", timeSpent, parseTime)
 	totalTime := time.Since(start)
 	timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+	success.Add(1)
 	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
 
 	for _, link := range links {
 		wg.Add(1)
-		go fetch(link, visited, mu, wg, maxPages)
+		go fetch(link, crawled, mu, wg, maxPages, success)
 	}
 }
 
