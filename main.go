@@ -67,11 +67,12 @@ func main() {
 	var wg sync.WaitGroup
 
 	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 	done := make(chan bool)
 
 	start := time.Now()
 	crawlerStats := CrawlerStats{StartTime: start}
-	go func(t time.Ticker) {
+	go func(t *time.Ticker) {
 		for {
 			select {
 			case <-done:
@@ -82,7 +83,7 @@ func main() {
 				crawlerStats.update(crawled, &mu, t, &success)
 			}
 		}
-	}(*ticker)
+	}(ticker)
 
 	wg.Add(1)
 	go fetch(seed, crawled, &mu, &wg, maxPages, &success)
@@ -146,7 +147,7 @@ func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.
 		return
 	}
 
-	links, err, parseTime := parser(resp, base)
+	links, parseTime := parser(resp, base)
 	timeSpent = fmt.Sprintf("%s | %s", timeSpent, parseTime)
 	totalTime := time.Since(start)
 	timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
@@ -159,7 +160,7 @@ func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.
 	}
 }
 
-func parser(resp *http.Response, base *url.URL) ([]string, error, string) {
+func parser(resp *http.Response, base *url.URL) ([]string, string) {
 	now := time.Now()
 
 	z := html.NewTokenizer(resp.Body)
@@ -195,6 +196,6 @@ func parser(resp *http.Response, base *url.URL) ([]string, error, string) {
 	}
 	totalTime := time.Since(now)
 	timeSpent := fmt.Sprintf("parse %dms", totalTime.Milliseconds())
-	return links, nil, timeSpent
+	return links, timeSpent
 
 }
