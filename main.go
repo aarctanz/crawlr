@@ -62,6 +62,7 @@ func main() {
 
 	var success atomic.Int32
 
+	claimed := make(map[string]struct{})
 	crawled := make(map[string]struct{})
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -86,7 +87,7 @@ func main() {
 	}(ticker)
 
 	wg.Add(1)
-	go fetch(seed, crawled, &mu, &wg, maxPages, &success)
+	go fetch(seed, crawled, claimed, &mu, &wg, maxPages, &success)
 	wg.Wait()
 	done <- true
 	totalTime := time.Since(start)
@@ -103,20 +104,20 @@ func main() {
 	encoder.Encode(crawlerStats)
 }
 
-func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32) {
+func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32) {
 	defer wg.Done()
 
 	mu.Lock()
-	if len(crawled) >= maxPages {
+	if len(claimed) >= maxPages {
 		mu.Unlock()
 		return
 	}
 
-	if _, ok := crawled[rawUrl]; ok {
+	if _, ok := claimed[rawUrl]; ok {
 		mu.Unlock()
 		return
 	}
-	crawled[rawUrl] = struct{}{}
+	claimed[rawUrl] = struct{}{}
 	mu.Unlock()
 
 	start := time.Now()
@@ -131,6 +132,10 @@ func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.
 		return
 	}
 	defer resp.Body.Close()
+
+	mu.Lock()
+	crawled[rawUrl] = struct{}{}
+	mu.Unlock()
 
 	if resp.StatusCode != http.StatusOK {
 		totalTime := time.Since(start)
@@ -156,7 +161,7 @@ func fetch(rawUrl string, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.
 
 	for _, link := range links {
 		wg.Add(1)
-		go fetch(link, crawled, mu, wg, maxPages, success)
+		go fetch(link, crawled, claimed, mu, wg, maxPages, success)
 	}
 }
 
