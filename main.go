@@ -129,18 +129,20 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 		totalTime := time.Since(start)
 		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
 		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		mu.Lock()
+		crawled[rawUrl] = struct{}{}
+		mu.Unlock()
 		return
 	}
 	defer resp.Body.Close()
-
-	mu.Lock()
-	crawled[rawUrl] = struct{}{}
-	mu.Unlock()
 
 	if resp.StatusCode != http.StatusOK {
 		totalTime := time.Since(start)
 		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
 		fmt.Printf("ERR %s: HTTP error: %d (%s)\n", rawUrl, resp.StatusCode, timeSpent)
+		mu.Lock()
+		crawled[rawUrl] = struct{}{}
+		mu.Unlock()
 		return
 	}
 
@@ -149,6 +151,9 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 		totalTime := time.Since(start)
 		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
 		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		mu.Lock()
+		crawled[rawUrl] = struct{}{}
+		mu.Unlock()
 		return
 	}
 
@@ -158,6 +163,10 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 	timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
 	success.Add(1)
 	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
+
+	mu.Lock()
+	crawled[rawUrl] = struct{}{}
+	mu.Unlock()
 
 	for _, link := range links {
 		wg.Add(1)
