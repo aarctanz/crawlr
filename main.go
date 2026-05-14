@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -124,22 +126,20 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 	resp, err := http.Get(rawUrl)
 	fetchTime := time.Since(start)
 
-	timeSpent := fmt.Sprintf("fetch %dms", fetchTime.Milliseconds())
 	if err != nil {
 		totalTime := time.Since(start)
-		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
-		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
+		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 		mu.Lock()
 		crawled[rawUrl] = struct{}{}
 		mu.Unlock()
 		return
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		totalTime := time.Since(start)
-		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
-		fmt.Printf("ERR %s: HTTP error: %d (%s)\n", rawUrl, resp.StatusCode, timeSpent)
+		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
+		fmt.Printf("ERR %s: HTTP error: %d (%s)\n", rawUrl, resp.StatusCode, totalTimeString)
 		mu.Lock()
 		crawled[rawUrl] = struct{}{}
 		mu.Unlock()
@@ -149,18 +149,33 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 	base, err := url.Parse(resp.Request.URL.String())
 	if err != nil {
 		totalTime := time.Since(start)
-		timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
-		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, timeSpent)
+		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
+		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
+		mu.Lock()
+		crawled[rawUrl] = struct{}{}
+		mu.Unlock()
+		return
+	}
+	readStart := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	readTime := time.Since(readStart)
+	resp.Body.Close()
+
+	if err != nil {
+		totalTime := time.Since(start)
+		totalTimeString := fmt.Sprintf("total %dms | fetch %dms | read %dms", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds())
+		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 		mu.Lock()
 		crawled[rawUrl] = struct{}{}
 		mu.Unlock()
 		return
 	}
 
+	pageSizeKB := int(len(body) / 1024)
+	resp.Body = io.NopCloser(bytes.NewReader(body))
 	links, parseTime := parser.Parse(resp, base)
-	timeSpent = fmt.Sprintf("%s | %s", timeSpent, parseTime)
 	totalTime := time.Since(start)
-	timeSpent = fmt.Sprintf("total %dms | %s", totalTime.Milliseconds(), timeSpent)
+	timeSpent := fmt.Sprintf("total %dms | fetch %dms | read %dms | parse %dms | size %dKB", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB)
 	success.Add(1)
 	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
 

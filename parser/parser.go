@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -9,7 +8,7 @@ import (
 	"golang.org/x/net/html"
 )
 
-func Parse(resp *http.Response, base *url.URL) ([]string, string) {
+func Parse(resp *http.Response, base *url.URL) ([]string, time.Duration) {
 	now := time.Now()
 
 	z := html.NewTokenizer(resp.Body)
@@ -44,7 +43,6 @@ func Parse(resp *http.Response, base *url.URL) ([]string, string) {
 		}
 	}
 	totalTime := time.Since(now)
-	timeSpent := fmt.Sprintf("parse %dms", totalTime.Milliseconds())
-	return links, timeSpent
+	return links, totalTime
 
 }
