@@ -24,19 +24,21 @@ type CrawlerStats struct {
 }
 
 type TimeSeriesSample struct {
-	ElapsedS   int64
-	PagesTotal int
-	Success    int
-	HeapMB     float64
-	Goroutines int
+	ElapsedS     int64
+	PagesTotal   int
+	ClaimedTotal int
+	Success      int
+	HeapMB       float64
+	Goroutines   int
 }
 
-func (c *CrawlerStats) update(crawled map[string]struct{}, mu *sync.Mutex, currentTime time.Time, success *atomic.Int32) {
+func (c *CrawlerStats) update(crawled map[string]struct{}, mu *sync.Mutex, currentTime time.Time, success *atomic.Int32, claimed map[string]struct{}) {
 	var s TimeSeriesSample
 	s.ElapsedS = int64(currentTime.Sub(c.StartTime).Seconds())
 
 	mu.Lock()
 	s.PagesTotal = len(crawled)
+	s.ClaimedTotal = len(claimed)
 	mu.Unlock()
 
 	s.Success = int(success.Load())
@@ -79,19 +81,61 @@ func main() {
 		for {
 			select {
 			case <-done:
-				crawlerStats.update(crawled, &mu, time.Now(), &success)
+				crawlerStats.update(crawled, &mu, time.Now(), &success, claimed)
 				return
 
 			case t := <-t.C:
-				crawlerStats.update(crawled, &mu, t, &success)
+				crawlerStats.update(crawled, &mu, t, &success, claimed)
 			}
 		}
 	}(ticker)
 
+	fetchLatencyChannel := make(chan int, maxPages)
+	parseLatencyChannel := make(chan int, maxPages)
+	pageSizeChannel := make(chan int, maxPages)
+	var lwg sync.WaitGroup
+
+	go func() {
+		<-done
+		close(fetchLatencyChannel)
+		close(parseLatencyChannel)
+		close(pageSizeChannel)
+	}()
+
+	latencyBuckets := []int{1, 2, 5, 10, 15, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 15000, 20000, 30000, 60000, math.MaxInt}
+	sizeBuckets := []int{25, 50, 75, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, math.MaxInt}
+
+	fetchLatencyCounts := make([]int, len(latencyBuckets))
+	parseLatencyCounts := make([]int, len(latencyBuckets))
+	pageSizeCounts := make([]int, len(sizeBuckets))
+
+	lwg.Add(3)
+	go func() {
+		defer lwg.Done()
+		for val := range fetchLatencyChannel {
+			incCounts(val, fetchLatencyCounts, latencyBuckets)
+		}
+	}()
+
+	go func() {
+		defer lwg.Done()
+		for val := range parseLatencyChannel {
+			incCounts(val, parseLatencyCounts, latencyBuckets)
+		}
+	}()
+
+	go func() {
+		defer lwg.Done()
+		for val := range pageSizeChannel {
+			incCounts(val, pageSizeCounts, sizeBuckets)
+		}
+	}()
+
 	wg.Add(1)
-	go fetch(seed, crawled, claimed, &mu, &wg, maxPages, &success)
+	go fetch(seed, crawled, claimed, &mu, &wg, maxPages, &success, fetchLatencyChannel, parseLatencyChannel, pageSizeChannel)
 	wg.Wait()
-	done <- true
+	close(done)
+	lwg.Wait()
 	totalTime := time.Since(start)
 	fmt.Printf("crawled %d pages, total time: %.2fs\n", len(crawled), totalTime.Seconds())
 	fmt.Printf("Success: %d\n", success.Load())
@@ -104,9 +148,57 @@ func main() {
 	defer file.Close()
 	encoder := json.NewEncoder(file)
 	encoder.Encode(crawlerStats)
+	fmt.Printf("%+v\n", fetchLatencyCounts)
+	fmt.Printf("%+v\n", parseLatencyCounts)
+	fmt.Printf("%+v\n", pageSizeCounts)
+
+	fetchP95 := percentile(0.95, fetchLatencyCounts, latencyBuckets)
+	fmt.Printf("fetch P95: %dms\n", fetchP95)
+	fetchP99 := percentile(0.99, fetchLatencyCounts, latencyBuckets)
+	fmt.Printf("fetch P99: %dms\n", fetchP99)
+	pageSizeP95 := percentile(0.95, pageSizeCounts, sizeBuckets)
+	fmt.Printf("page size P95: %dKB\n", pageSizeP95)
+	pageSizeP99 := percentile(0.99, pageSizeCounts, sizeBuckets)
+	fmt.Printf("page size P99: %dKB\n", pageSizeP99)
 }
 
-func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32) {
+func percentile(p float64, counts []int, buckets []int) int {
+	total := 0
+	for _, i := range counts {
+		total += i
+	}
+
+	rank := int(math.Ceil(p * float64(total)))
+
+	cumulative := 0
+	for i, val := range counts {
+		cumulative += val
+		if cumulative >= rank {
+			lower := 0
+			if i > 0 {
+				lower = buckets[i-1]
+			}
+			if i == len(counts)-1 {
+				return buckets[len(buckets)-2]
+			}
+			upper := buckets[i]
+			fraction := float64(rank-(cumulative-val)) / float64(val)
+			return lower + int(fraction*float64(upper-lower))
+		}
+	}
+	return buckets[len(buckets)-2]
+}
+
+func incCounts(value int, Counts []int, Buckets []int) {
+	for i, bucket := range Buckets {
+		if value <= bucket {
+			Counts[i]++
+			return
+		}
+	}
+}
+
+func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32, fetchLatencyChannel chan int, parseLatencyChannel chan int, pageSizeChannel chan int) {
 	defer wg.Done()
 
 	mu.Lock()
@@ -179,12 +271,16 @@ func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct
 	success.Add(1)
 	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
 
+	fetchLatencyChannel <- int(fetchTime.Milliseconds())
+	parseLatencyChannel <- int(parseTime.Milliseconds())
+	pageSizeChannel <- pageSizeKB
+
 	mu.Lock()
 	crawled[rawUrl] = struct{}{}
 	mu.Unlock()
 
 	for _, link := range links {
 		wg.Add(1)
-		go fetch(link, crawled, claimed, mu, wg, maxPages, success)
+		go fetch(link, crawled, claimed, mu, wg, maxPages, success, fetchLatencyChannel, parseLatencyChannel, pageSizeChannel)
 	}
 }
