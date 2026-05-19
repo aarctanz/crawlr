@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -51,6 +50,10 @@ func (c *CrawlerStats) update(crawled map[string]struct{}, mu *sync.Mutex, curre
 	c.Sample = append(c.Sample, s)
 }
 
+var httpClient = &http.Client{
+	Timeout: 20 * time.Second,
+}
+
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: crawlr <seed-url> <max-pages>\n")
@@ -73,7 +76,7 @@ func main() {
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	done := make(chan bool)
+	done := make(chan struct{})
 
 	start := time.Now()
 	crawlerStats := CrawlerStats{StartTime: start}
@@ -131,9 +134,25 @@ func main() {
 		}
 	}()
 
+	urlChannel := make(chan string, 10)
+	urlChannel <- seed
 	wg.Add(1)
-	go fetch(seed, crawled, claimed, &mu, &wg, maxPages, &success, fetchLatencyChannel, parseLatencyChannel, pageSizeChannel)
-	wg.Wait()
+	go func() {
+		wg.Wait()
+		close(urlChannel)
+	}()
+
+	workerWg := sync.WaitGroup{}
+	for i := range runtime.NumCPU() {
+		fmt.Printf("Worker %d started\n", i)
+		workerWg.Add(1)
+		go func() {
+			defer workerWg.Done()
+			worker(urlChannel, claimed, crawled, &mu, &wg, maxPages, &success, fetchLatencyChannel, parseLatencyChannel, pageSizeChannel, done)
+		}()
+	}
+	workerWg.Wait()
+
 	close(done)
 	lwg.Wait()
 	totalTime := time.Since(start)
@@ -198,89 +217,104 @@ func incCounts(value int, Counts []int, Buckets []int) {
 	}
 }
 
-func fetch(rawUrl string, crawled map[string]struct{}, claimed map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32, fetchLatencyChannel chan int, parseLatencyChannel chan int, pageSizeChannel chan int) {
-	defer wg.Done()
+func worker(urlChannel chan string, claimed map[string]struct{}, crawled map[string]struct{}, mu *sync.Mutex, wg *sync.WaitGroup, maxPages int, success *atomic.Int32, fetchLatencyChannel chan int, parseLatencyChannel chan int, pageSizeChannel chan int, done chan struct{}) {
 
-	mu.Lock()
-	if len(claimed) >= maxPages {
+	for rawUrl := range urlChannel {
+
+		mu.Lock()
+		if len(claimed) >= maxPages {
+			mu.Unlock()
+			wg.Done()
+			continue
+		}
+
+		if _, ok := claimed[rawUrl]; ok {
+			mu.Unlock()
+			wg.Done()
+			continue
+		}
+		claimed[rawUrl] = struct{}{}
 		mu.Unlock()
-		return
-	}
 
-	if _, ok := claimed[rawUrl]; ok {
-		mu.Unlock()
-		return
-	}
-	claimed[rawUrl] = struct{}{}
-	mu.Unlock()
+		start := time.Now()
 
-	start := time.Now()
-	resp, err := http.Get(rawUrl)
-	fetchTime := time.Since(start)
+		resp, err := fetch(rawUrl)
+		if err != nil {
+			fetchTime := time.Since(start)
+			totalTime := time.Since(start)
+			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
+			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
+			mu.Lock()
+			crawled[rawUrl] = struct{}{}
+			mu.Unlock()
+			wg.Done()
+			continue
+		}
+		fetchTime := time.Since(start)
 
-	if err != nil {
+		base := resp.Request.URL
+		readStart := time.Now()
+		body, err := io.ReadAll(resp.Body)
+		readTime := time.Since(readStart)
+		resp.Body.Close()
+
+		if err != nil {
+			totalTime := time.Since(start)
+			totalTimeString := fmt.Sprintf("total %dms | fetch %dms | read %dms", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds())
+			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
+			mu.Lock()
+			crawled[rawUrl] = struct{}{}
+			mu.Unlock()
+			wg.Done()
+			continue
+		}
+
+		pageSizeKB := int(len(body) / 1024)
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		links, parseTime := parser.Parse(resp, base)
 		totalTime := time.Since(start)
-		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
-		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
+		timeSpent := fmt.Sprintf("total %dms | fetch %dms | read %dms | parse %dms | size %dKB", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB)
+		success.Add(1)
+		fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
+
+		fetchLatencyChannel <- int(fetchTime.Milliseconds())
+		parseLatencyChannel <- int(parseTime.Milliseconds())
+		pageSizeChannel <- pageSizeKB
+
 		mu.Lock()
 		crawled[rawUrl] = struct{}{}
 		mu.Unlock()
-		return
+
+		wg.Add(1)
+		go insert(links, urlChannel, wg, done)
+		wg.Done()
+
+	}
+}
+
+func insert(urls []string, urlChannel chan string, wg *sync.WaitGroup, done chan struct{}) {
+	defer wg.Done()
+	for _, url := range urls {
+		select {
+		case <-done:
+			return
+		default:
+			wg.Add(1)
+			urlChannel <- url
+		}
+	}
+}
+
+func fetch(rawURL string) (*http.Response, error) {
+	resp, err := httpClient.Get(rawURL)
+	if err != nil {
+		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		totalTime := time.Since(start)
-		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
-		fmt.Printf("ERR %s: HTTP error: %d (%s)\n", rawUrl, resp.StatusCode, totalTimeString)
-		mu.Lock()
-		crawled[rawUrl] = struct{}{}
-		mu.Unlock()
-		return
+		resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	base, err := url.Parse(resp.Request.URL.String())
-	if err != nil {
-		totalTime := time.Since(start)
-		totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
-		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
-		mu.Lock()
-		crawled[rawUrl] = struct{}{}
-		mu.Unlock()
-		return
-	}
-	readStart := time.Now()
-	body, err := io.ReadAll(resp.Body)
-	readTime := time.Since(readStart)
-	resp.Body.Close()
-
-	if err != nil {
-		totalTime := time.Since(start)
-		totalTimeString := fmt.Sprintf("total %dms | fetch %dms | read %dms", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds())
-		fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
-		mu.Lock()
-		crawled[rawUrl] = struct{}{}
-		mu.Unlock()
-		return
-	}
-
-	pageSizeKB := int(len(body) / 1024)
-	resp.Body = io.NopCloser(bytes.NewReader(body))
-	links, parseTime := parser.Parse(resp, base)
-	totalTime := time.Since(start)
-	timeSpent := fmt.Sprintf("total %dms | fetch %dms | read %dms | parse %dms | size %dKB", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB)
-	success.Add(1)
-	fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
-
-	fetchLatencyChannel <- int(fetchTime.Milliseconds())
-	parseLatencyChannel <- int(parseTime.Milliseconds())
-	pageSizeChannel <- pageSizeKB
-
-	mu.Lock()
-	crawled[rawUrl] = struct{}{}
-	mu.Unlock()
-
-	for _, link := range links {
-		wg.Add(1)
-		go fetch(link, crawled, claimed, mu, wg, maxPages, success, fetchLatencyChannel, parseLatencyChannel, pageSizeChannel)
-	}
+	return resp, nil
 }
