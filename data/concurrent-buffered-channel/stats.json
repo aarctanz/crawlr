@@ -1,0 +1,197 @@
+{
+  "Sample": [
+    {
+      "ElapsedS": 5,
+      "PagesTotal": 503,
+      "ClaimedTotal": 583,
+      "Success": 489,
+      "HeapMB": 15.83,
+      "Goroutines": 550
+    },
+    {
+      "ElapsedS": 10,
+      "PagesTotal": 1369,
+      "ClaimedTotal": 1449,
+      "Success": 1339,
+      "HeapMB": 42.6,
+      "Goroutines": 1376
+    },
+    {
+      "ElapsedS": 15,
+      "PagesTotal": 2234,
+      "ClaimedTotal": 2314,
+      "Success": 2127,
+      "HeapMB": 60.06,
+      "Goroutines": 2166
+    },
+    {
+      "ElapsedS": 20,
+      "PagesTotal": 3029,
+      "ClaimedTotal": 3109,
+      "Success": 2814,
+      "HeapMB": 160.02,
+      "Goroutines": 2843
+    },
+    {
+      "ElapsedS": 25,
+      "PagesTotal": 3935,
+      "ClaimedTotal": 4015,
+      "Success": 3579,
+      "HeapMB": 120.83,
+      "Goroutines": 3609
+    },
+    {
+      "ElapsedS": 30,
+      "PagesTotal": 4686,
+      "ClaimedTotal": 4766,
+      "Success": 4179,
+      "HeapMB": 230.94,
+      "Goroutines": 4195
+    },
+    {
+      "ElapsedS": 35,
+      "PagesTotal": 5365,
+      "ClaimedTotal": 5445,
+      "Success": 4745,
+      "HeapMB": 229.85,
+      "Goroutines": 4730
+    },
+    {
+      "ElapsedS": 40,
+      "PagesTotal": 6027,
+      "ClaimedTotal": 6107,
+      "Success": 5289,
+      "HeapMB": 266.05,
+      "Goroutines": 5242
+    },
+    {
+      "ElapsedS": 45,
+      "PagesTotal": 6799,
+      "ClaimedTotal": 6879,
+      "Success": 5925,
+      "HeapMB": 301.83,
+      "Goroutines": 5843
+    },
+    {
+      "ElapsedS": 50,
+      "PagesTotal": 7529,
+      "ClaimedTotal": 7609,
+      "Success": 6524,
+      "HeapMB": 174.04,
+      "Goroutines": 6430
+    },
+    {
+      "ElapsedS": 55,
+      "PagesTotal": 8362,
+      "ClaimedTotal": 8442,
+      "Success": 7210,
+      "HeapMB": 192.17,
+      "Goroutines": 7065
+    },
+    {
+      "ElapsedS": 60,
+      "PagesTotal": 9169,
+      "ClaimedTotal": 9249,
+      "Success": 7877,
+      "HeapMB": 172.94,
+      "Goroutines": 7681
+    },
+    {
+      "ElapsedS": 65,
+      "PagesTotal": 9917,
+      "ClaimedTotal": 9997,
+      "Success": 8492,
+      "HeapMB": 246.21,
+      "Goroutines": 8243
+    },
+    {
+      "ElapsedS": 70,
+      "PagesTotal": 10711,
+      "ClaimedTotal": 10791,
+      "Success": 9166,
+      "HeapMB": 265.04,
+      "Goroutines": 8874
+    },
+    {
+      "ElapsedS": 75,
+      "PagesTotal": 11418,
+      "ClaimedTotal": 11498,
+      "Success": 9740,
+      "HeapMB": 694.51,
+      "Goroutines": 9394
+    },
+    {
+      "ElapsedS": 80,
+      "PagesTotal": 12064,
+      "ClaimedTotal": 12144,
+      "Success": 10320,
+      "HeapMB": 760.69,
+      "Goroutines": 9953
+    },
+    {
+      "ElapsedS": 85,
+      "PagesTotal": 12767,
+      "ClaimedTotal": 12847,
+      "Success": 10933,
+      "HeapMB": 1074.56,
+      "Goroutines": 10504
+    },
+    {
+      "ElapsedS": 90,
+      "PagesTotal": 13508,
+      "ClaimedTotal": 13588,
+      "Success": 11585,
+      "HeapMB": 462.87,
+      "Goroutines": 11109
+    },
+    {
+      "ElapsedS": 95,
+      "PagesTotal": 14242,
+      "ClaimedTotal": 14322,
+      "Success": 12212,
+      "HeapMB": 286.62,
+      "Goroutines": 11726
+    },
+    {
+      "ElapsedS": 100,
+      "PagesTotal": 14948,
+      "ClaimedTotal": 15000,
+      "Success": 12824,
+      "HeapMB": 503.71,
+      "Goroutines": 3398
+    },
+    {
+      "ElapsedS": 105,
+      "PagesTotal": 14998,
+      "ClaimedTotal": 15000,
+      "Success": 12870,
+      "HeapMB": 207.57,
+      "Goroutines": 648
+    },
+    {
+      "ElapsedS": 110,
+      "PagesTotal": 14998,
+      "ClaimedTotal": 15000,
+      "Success": 12870,
+      "HeapMB": 207.57,
+      "Goroutines": 633
+    },
+    {
+      "ElapsedS": 115,
+      "PagesTotal": 14998,
+      "ClaimedTotal": 15000,
+      "Success": 12870,
+      "HeapMB": 207.57,
+      "Goroutines": 621
+    },
+    {
+      "ElapsedS": 115,
+      "PagesTotal": 15000,
+      "ClaimedTotal": 15000,
+      "Success": 12870,
+      "HeapMB": 207.58,
+      "Goroutines": 536
+    }
+  ],
+  "StartTime": "2026-05-25T18:38:33.234163678+05:30"
+}

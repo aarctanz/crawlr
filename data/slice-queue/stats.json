@@ -1,0 +1,245 @@
+{
+  "Sample": [
+    {
+      "ElapsedS": 5,
+      "PagesTotal": 389,
+      "ClaimedTotal": 469,
+      "Success": 362,
+      "HeapMB": 11.94,
+      "Goroutines": 205
+    },
+    {
+      "ElapsedS": 10,
+      "PagesTotal": 1248,
+      "ClaimedTotal": 1328,
+      "Success": 1202,
+      "HeapMB": 40.4,
+      "Goroutines": 264
+    },
+    {
+      "ElapsedS": 15,
+      "PagesTotal": 1806,
+      "ClaimedTotal": 1886,
+      "Success": 1725,
+      "HeapMB": 57.01,
+      "Goroutines": 275
+    },
+    {
+      "ElapsedS": 20,
+      "PagesTotal": 2469,
+      "ClaimedTotal": 2549,
+      "Success": 2222,
+      "HeapMB": 65.61,
+      "Goroutines": 304
+    },
+    {
+      "ElapsedS": 25,
+      "PagesTotal": 3129,
+      "ClaimedTotal": 3209,
+      "Success": 2521,
+      "HeapMB": 50.44,
+      "Goroutines": 307
+    },
+    {
+      "ElapsedS": 30,
+      "PagesTotal": 3929,
+      "ClaimedTotal": 4009,
+      "Success": 2851,
+      "HeapMB": 56.37,
+      "Goroutines": 319
+    },
+    {
+      "ElapsedS": 35,
+      "PagesTotal": 4723,
+      "ClaimedTotal": 4803,
+      "Success": 3175,
+      "HeapMB": 74.18,
+      "Goroutines": 393
+    },
+    {
+      "ElapsedS": 40,
+      "PagesTotal": 5269,
+      "ClaimedTotal": 5349,
+      "Success": 3604,
+      "HeapMB": 85.75,
+      "Goroutines": 420
+    },
+    {
+      "ElapsedS": 45,
+      "PagesTotal": 5797,
+      "ClaimedTotal": 5877,
+      "Success": 3938,
+      "HeapMB": 108.9,
+      "Goroutines": 421
+    },
+    {
+      "ElapsedS": 50,
+      "PagesTotal": 6011,
+      "ClaimedTotal": 6091,
+      "Success": 4045,
+      "HeapMB": 117.8,
+      "Goroutines": 411
+    },
+    {
+      "ElapsedS": 55,
+      "PagesTotal": 6461,
+      "ClaimedTotal": 6541,
+      "Success": 4332,
+      "HeapMB": 112.39,
+      "Goroutines": 472
+    },
+    {
+      "ElapsedS": 60,
+      "PagesTotal": 7030,
+      "ClaimedTotal": 7110,
+      "Success": 4866,
+      "HeapMB": 112.16,
+      "Goroutines": 421
+    },
+    {
+      "ElapsedS": 65,
+      "PagesTotal": 7570,
+      "ClaimedTotal": 7650,
+      "Success": 5401,
+      "HeapMB": 133.94,
+      "Goroutines": 445
+    },
+    {
+      "ElapsedS": 70,
+      "PagesTotal": 7844,
+      "ClaimedTotal": 7924,
+      "Success": 5673,
+      "HeapMB": 201.34,
+      "Goroutines": 443
+    },
+    {
+      "ElapsedS": 75,
+      "PagesTotal": 8500,
+      "ClaimedTotal": 8580,
+      "Success": 6312,
+      "HeapMB": 228.43,
+      "Goroutines": 473
+    },
+    {
+      "ElapsedS": 80,
+      "PagesTotal": 9188,
+      "ClaimedTotal": 9268,
+      "Success": 6971,
+      "HeapMB": 318.38,
+      "Goroutines": 546
+    },
+    {
+      "ElapsedS": 85,
+      "PagesTotal": 9200,
+      "ClaimedTotal": 9280,
+      "Success": 6981,
+      "HeapMB": 334.8,
+      "Goroutines": 538
+    },
+    {
+      "ElapsedS": 90,
+      "PagesTotal": 9201,
+      "ClaimedTotal": 9281,
+      "Success": 6982,
+      "HeapMB": 340.28,
+      "Goroutines": 531
+    },
+    {
+      "ElapsedS": 95,
+      "PagesTotal": 9226,
+      "ClaimedTotal": 9306,
+      "Success": 7005,
+      "HeapMB": 355.35,
+      "Goroutines": 531
+    },
+    {
+      "ElapsedS": 100,
+      "PagesTotal": 9505,
+      "ClaimedTotal": 9585,
+      "Success": 7251,
+      "HeapMB": 261.53,
+      "Goroutines": 531
+    },
+    {
+      "ElapsedS": 105,
+      "PagesTotal": 9900,
+      "ClaimedTotal": 9980,
+      "Success": 7641,
+      "HeapMB": 161.97,
+      "Goroutines": 551
+    },
+    {
+      "ElapsedS": 110,
+      "PagesTotal": 10350,
+      "ClaimedTotal": 10430,
+      "Success": 7928,
+      "HeapMB": 226.59,
+      "Goroutines": 582
+    },
+    {
+      "ElapsedS": 115,
+      "PagesTotal": 10833,
+      "ClaimedTotal": 10913,
+      "Success": 8405,
+      "HeapMB": 324.1,
+      "Goroutines": 631
+    },
+    {
+      "ElapsedS": 120,
+      "PagesTotal": 11423,
+      "ClaimedTotal": 11503,
+      "Success": 8952,
+      "HeapMB": 251.93,
+      "Goroutines": 556
+    },
+    {
+      "ElapsedS": 125,
+      "PagesTotal": 12096,
+      "ClaimedTotal": 12176,
+      "Success": 9584,
+      "HeapMB": 399.04,
+      "Goroutines": 569
+    },
+    {
+      "ElapsedS": 130,
+      "PagesTotal": 12898,
+      "ClaimedTotal": 12978,
+      "Success": 10365,
+      "HeapMB": 320.85,
+      "Goroutines": 549
+    },
+    {
+      "ElapsedS": 135,
+      "PagesTotal": 13586,
+      "ClaimedTotal": 13666,
+      "Success": 11012,
+      "HeapMB": 359.23,
+      "Goroutines": 561
+    },
+    {
+      "ElapsedS": 140,
+      "PagesTotal": 14533,
+      "ClaimedTotal": 14613,
+      "Success": 11958,
+      "HeapMB": 432.52,
+      "Goroutines": 542
+    },
+    {
+      "ElapsedS": 145,
+      "PagesTotal": 15074,
+      "ClaimedTotal": 15079,
+      "Success": 12477,
+      "HeapMB": 667.16,
+      "Goroutines": 389
+    },
+    {
+      "ElapsedS": 146,
+      "PagesTotal": 15079,
+      "ClaimedTotal": 15079,
+      "Success": 12482,
+      "HeapMB": 673.29,
+      "Goroutines": 371
+    }
+  ],
+  "StartTime": "2026-05-25T17:58:47.299983305+05:30"
+}
