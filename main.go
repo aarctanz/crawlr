@@ -108,7 +108,6 @@ func NewCrawler(seed string, maxPages int) *Crawler {
 	crawled := make(map[string]struct{})
 	claimed := make(map[string]struct{})
 	var mu sync.Mutex
-	var wg sync.WaitGroup
 	cond := sync.NewCond(&mu)
 
 	queue := NewQueue()
@@ -121,7 +120,6 @@ func NewCrawler(seed string, maxPages int) *Crawler {
 		claimed:    claimed,
 		mu:         &mu,
 		cond:       cond,
-		wg:         &wg,
 		IsShutdown: false,
 	}
 }
@@ -131,18 +129,7 @@ func (c *Crawler) Shutdown() {
 	c.cond.Broadcast()
 }
 
-func (c *Crawler) PushUrls(urls []string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.IsShutdown {
-		return
-	}
-	c.Que.Enqueue(urls)
-	c.cond.Broadcast()
-}
-
-func (c *Crawler) NextUrl() (string, bool) {
+func (c *Crawler) Next() (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	for {
@@ -280,7 +267,7 @@ func main() {
 	}()
 
 	workerWg := sync.WaitGroup{}
-	for i := range runtime.NumCPU() {
+	for i := range 100 * runtime.NumCPU() {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
@@ -358,7 +345,7 @@ func incCounts(value int, Counts []int, Buckets []int) {
 func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel chan int, pageSizeChannel chan int, done chan struct{}) {
 
 	for {
-		rawUrl, ok := crawler.NextUrl()
+		rawUrl, ok := crawler.Next()
 		if !ok {
 			return
 		}
