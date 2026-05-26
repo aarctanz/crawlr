@@ -164,17 +164,24 @@ func (c *Crawler) Next() (string, bool) {
 func (c *Crawler) Fail(url string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.crawled[url] = struct{}{}
 	c.ActiveWorkers--
 	c.TotalPages.Add(1)
+
+	if len(c.crawled) >= c.MaxPages {
+		c.Shutdown()
+		c.cond.Broadcast()
+	}
 }
 
 func (c *Crawler) Done(url string, links []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.SuccessPages.Add(1)
 	c.TotalPages.Add(1)
-
+	c.ActiveWorkers--
 	c.crawled[url] = struct{}{}
 
 	if len(c.crawled) >= c.MaxPages {
@@ -185,7 +192,6 @@ func (c *Crawler) Done(url string, links []string) {
 	if !c.IsShutdown {
 		c.Que.Enqueue(links)
 	}
-	c.ActiveWorkers--
 	c.cond.Broadcast()
 }
 
