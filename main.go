@@ -150,8 +150,17 @@ func (c *Crawler) NextUrl() (string, bool) {
 			return "", false
 		}
 
+		if len(c.crawled) >= c.MaxPages {
+			c.Shutdown()
+			return "", false
+		}
+
 		if c.Que.Len() > 0 {
 			url, _ := c.Que.Dequeue()
+			if _, dup := c.claimed[url]; dup {
+				continue
+			}
+			c.claimed[url] = struct{}{}
 			c.ActiveWorkers++
 			return url, true
 		}
@@ -163,6 +172,34 @@ func (c *Crawler) NextUrl() (string, bool) {
 
 		c.cond.Wait()
 	}
+}
+
+func (c *Crawler) Fail(url string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.crawled[url] = struct{}{}
+	c.ActiveWorkers--
+	c.TotalPages.Add(1)
+}
+
+func (c *Crawler) Done(url string, links []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.SuccessPages.Add(1)
+	c.TotalPages.Add(1)
+
+	c.crawled[url] = struct{}{}
+
+	if len(c.crawled) >= c.MaxPages {
+		c.Shutdown()
+		return
+	}
+
+	if !c.IsShutdown {
+		c.Que.Enqueue(links)
+	}
+	c.ActiveWorkers--
+	c.cond.Broadcast()
 }
 
 func main() {
@@ -326,22 +363,6 @@ func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel 
 			return
 		}
 
-		crawler.mu.Lock()
-		if len(crawler.crawled) >= crawler.MaxPages {
-			crawler.ActiveWorkers--
-			crawler.Shutdown()
-			crawler.mu.Unlock()
-			return
-		}
-
-		if _, ok := crawler.claimed[rawUrl]; ok {
-			crawler.ActiveWorkers--
-			crawler.mu.Unlock()
-			continue
-		}
-		crawler.claimed[rawUrl] = struct{}{}
-		crawler.mu.Unlock()
-
 		start := time.Now()
 
 		resp, err := fetch(rawUrl)
@@ -350,12 +371,7 @@ func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel 
 			totalTime := time.Since(start)
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
-			crawler.mu.Lock()
-			crawler.crawled[rawUrl] = struct{}{}
-			crawler.ActiveWorkers--
-			crawler.mu.Unlock()
-			crawler.TotalPages.Add(1)
-
+			crawler.Fail(rawUrl)
 			continue
 		}
 		fetchTime := time.Since(start)
@@ -370,12 +386,7 @@ func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel 
 			totalTime := time.Since(start)
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms | read %dms", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
-			crawler.mu.Lock()
-			crawler.crawled[rawUrl] = struct{}{}
-			crawler.ActiveWorkers--
-			crawler.mu.Unlock()
-			crawler.TotalPages.Add(1)
-
+			crawler.Fail(rawUrl)
 			continue
 		}
 
@@ -383,9 +394,7 @@ func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel 
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		links, parseTime := parser.Parse(resp, base)
 		totalTime := time.Since(start)
-		timeSpent := fmt.Sprintf("total %dms | fetch %dms | read %dms | parse %dms | size %dKB", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB)
-		crawler.SuccessPages.Add(1)
-		crawler.TotalPages.Add(1)
+		timeSpent := fmt.Sprintf("total %dms | fetch %dms | read %dms | parse %dms | size %dKB | %d links", totalTime.Milliseconds(), fetchTime.Milliseconds(), readTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB, len(links))
 
 		fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
 
@@ -393,12 +402,7 @@ func worker(crawler *Crawler, fetchLatencyChannel chan int, parseLatencyChannel 
 		parseLatencyChannel <- int(parseTime.Milliseconds())
 		pageSizeChannel <- pageSizeKB
 
-		crawler.mu.Lock()
-		crawler.crawled[rawUrl] = struct{}{}
-		crawler.ActiveWorkers--
-		crawler.mu.Unlock()
-
-		crawler.PushUrls(links)
+		crawler.Done(rawUrl, links)
 
 	}
 }
