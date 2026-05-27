@@ -23,24 +23,21 @@ type CrawlerStats struct {
 }
 
 type TimeSeriesSample struct {
-	ElapsedS     int64
-	PagesTotal   int
-	ClaimedTotal int
-	Success      int
-	HeapMB       float64
-	Goroutines   int
+	ElapsedS      int64
+	Crawled       int64
+	Claimed       int64
+	Success       int64
+	ActiveWorkers int64
+	HeapMB        float64
+	Goroutines    int
 }
 
-func (c *CrawlerStats) update(crawler *Crawler, currentTime time.Time) {
+func (c *CrawlerStats) update(met *Metrics, currentTime time.Time) {
 	var s TimeSeriesSample
 	s.ElapsedS = int64(currentTime.Sub(c.StartTime).Seconds())
 
-	crawler.mu.Lock()
-	s.PagesTotal = len(crawler.crawled)
-	s.ClaimedTotal = len(crawler.claimed)
-	crawler.mu.Unlock()
+	s.Claimed, s.Crawled, s.Success, s.ActiveWorkers = met.Snapshot()
 
-	s.Success = int(crawler.SuccessPages.Load())
 	s.Goroutines = runtime.NumGoroutine()
 
 	var m runtime.MemStats
@@ -95,10 +92,7 @@ type Crawler struct {
 	claimed       map[string]struct{}
 	mu            *sync.Mutex
 	cond          *sync.Cond
-	wg            *sync.WaitGroup
 	MaxPages      int
-	TotalPages    atomic.Int32
-	SuccessPages  atomic.Int32
 	ActiveWorkers int
 	IsShutdown    bool
 	Que           *Queue
@@ -161,13 +155,34 @@ func (c *Crawler) Next() (string, bool) {
 	}
 }
 
+type Metrics struct {
+	Claimed atomic.Int64
+	Crawled atomic.Int64
+	Success atomic.Int64
+}
+
+func (m *Metrics) Claim() {
+	m.Claimed.Add(1)
+}
+
+func (m *Metrics) Complete(ok bool) {
+	m.Crawled.Add(1)
+	if ok {
+		m.Success.Add(1)
+	}
+}
+
+func (m *Metrics) Snapshot() (claimed, crawled, success, active int64) {
+	c, d, s := m.Claimed.Load(), m.Crawled.Load(), m.Success.Load()
+	return c, d, s, c - d
+}
+
 func (c *Crawler) Fail(url string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	c.crawled[url] = struct{}{}
 	c.ActiveWorkers--
-	c.TotalPages.Add(1)
 
 	if len(c.crawled) >= c.MaxPages {
 		c.Shutdown()
@@ -179,8 +194,6 @@ func (c *Crawler) Done(url string, links []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.SuccessPages.Add(1)
-	c.TotalPages.Add(1)
 	c.ActiveWorkers--
 	c.crawled[url] = struct{}{}
 
@@ -216,6 +229,7 @@ func main() {
 	}
 
 	crawler := NewCrawler(seed, maxPages)
+	metrics := Metrics{}
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -229,11 +243,11 @@ func main() {
 		for {
 			select {
 			case <-done:
-				crawlerStats.update(crawler, time.Now())
+				crawlerStats.update(&metrics, time.Now())
 				return
 
 			case t := <-t.C:
-				crawlerStats.update(crawler, t)
+				crawlerStats.update(&metrics, t)
 			}
 		}
 	}(ticker)
@@ -264,12 +278,12 @@ func main() {
 	}()
 
 	workerWg := sync.WaitGroup{}
-	for i := range 10 * runtime.NumCPU() {
+	for i := range 300 * runtime.NumCPU() {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
-			worker(crawler, done, latencyChannel)
+			worker(crawler, done, latencyChannel, &metrics)
 		}()
 	}
 	workerWg.Wait()
@@ -278,8 +292,8 @@ func main() {
 	<-statsDone
 	lwg.Wait()
 	totalTime := time.Since(start)
-	fmt.Printf("crawled %d pages, total time: %.2fs\n", len(crawler.crawled), totalTime.Seconds())
-	fmt.Printf("Success: %d\n", crawler.SuccessPages.Load())
+	fmt.Printf("crawled %d pages, total time: %.2fs\n", metrics.Crawled.Load(), totalTime.Seconds())
+	fmt.Printf("Success: %d\n", metrics.Success.Load())
 
 	file, err := os.OpenFile("stats.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -339,14 +353,14 @@ func incCounts(value int, Counts []int, Buckets []int) {
 	}
 }
 
-func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency) {
+func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, metrics *Metrics) {
 
 	for {
 		rawUrl, ok := crawler.Next()
 		if !ok {
 			return
 		}
-
+		metrics.Claim()
 		var latency Latency
 
 		start := time.Now()
@@ -358,6 +372,7 @@ func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency) {
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 			crawler.Fail(rawUrl)
+			metrics.Complete(false)
 			continue
 		}
 
@@ -373,6 +388,7 @@ func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency) {
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 			crawler.Fail(rawUrl)
+			metrics.Complete(false)
 			continue
 		}
 
@@ -392,6 +408,7 @@ func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency) {
 		latencyChannel <- latency
 
 		crawler.Done(rawUrl, links)
+		metrics.Complete(true)
 
 	}
 }
