@@ -186,13 +186,6 @@ func (c *Crawler) Done(url string, links []string) {
 	c.cond.Broadcast()
 }
 
-type Latency struct {
-	FetchMs    int
-	ParseMs    int
-	TotalMs    int
-	PageSizeKB int
-}
-
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "usage: crawlr <seed-url> <max-pages>\n")
@@ -207,7 +200,7 @@ func main() {
 	}
 
 	crawler := NewCrawler(seed, maxPages)
-	metrics := metrics.Metrics{}
+	crawlMetrics := metrics.Metrics{}
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -221,39 +214,17 @@ func main() {
 		for {
 			select {
 			case <-done:
-				crawlerStats.update(&metrics, time.Now())
+				crawlerStats.update(&crawlMetrics, time.Now())
 				return
 
 			case t := <-t.C:
-				crawlerStats.update(&metrics, t)
+				crawlerStats.update(&crawlMetrics, t)
 			}
 		}
 	}(ticker)
 
-	var lwg sync.WaitGroup
-	latencyChannel := make(chan Latency, maxPages)
-
-	go func() {
-		<-done
-		close(latencyChannel)
-	}()
-
-	latencyBuckets := []int{1, 2, 5, 10, 15, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 15000, 20000, 30000, 60000, math.MaxInt}
-	sizeBuckets := []int{25, 50, 75, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, math.MaxInt}
-
-	fetchLatencyCounts := make([]int, len(latencyBuckets))
-	parseLatencyCounts := make([]int, len(latencyBuckets))
-	pageSizeCounts := make([]int, len(sizeBuckets))
-
-	lwg.Add(1)
-	go func() {
-		defer lwg.Done()
-		for latency := range latencyChannel {
-			incCounts(latency.FetchMs, fetchLatencyCounts, latencyBuckets)
-			incCounts(latency.ParseMs, parseLatencyCounts, latencyBuckets)
-			incCounts(latency.PageSizeKB, pageSizeCounts, sizeBuckets)
-		}
-	}()
+	lm := metrics.NewLatencyMetrics(maxPages)
+	go lm.UpdateCounts()
 
 	workerWg := sync.WaitGroup{}
 	for i := range runtime.NumCPU() {
@@ -261,17 +232,20 @@ func main() {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
-			worker(crawler, done, latencyChannel, &metrics)
+			worker(crawler, lm, &crawlMetrics)
 		}()
 	}
 	workerWg.Wait()
 
 	close(done)
+	lm.WaitAndClose()
+	fmt.Println(lm.Report())
+
 	<-statsDone
-	lwg.Wait()
+
 	totalTime := time.Since(start)
-	fmt.Printf("crawled %d pages, total time: %.2fs\n", metrics.Crawled.Load(), totalTime.Seconds())
-	fmt.Printf("Success: %d\n", metrics.Success.Load())
+	fmt.Printf("crawled %d pages, total time: %.2fs\n", crawlMetrics.Crawled.Load(), totalTime.Seconds())
+	fmt.Printf("Success: %d\n", crawlMetrics.Success.Load())
 
 	file, err := os.OpenFile("stats.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
@@ -281,65 +255,17 @@ func main() {
 	defer file.Close()
 	encoder := json.NewEncoder(file)
 	encoder.Encode(crawlerStats)
-	fmt.Printf("%+v\n", fetchLatencyCounts)
-	fmt.Printf("%+v\n", parseLatencyCounts)
-	fmt.Printf("%+v\n", pageSizeCounts)
-
-	fetchP95 := percentile(0.95, fetchLatencyCounts, latencyBuckets)
-	fmt.Printf("fetch P95: %dms\n", fetchP95)
-	fetchP99 := percentile(0.99, fetchLatencyCounts, latencyBuckets)
-	fmt.Printf("fetch P99: %dms\n", fetchP99)
-	pageSizeP95 := percentile(0.95, pageSizeCounts, sizeBuckets)
-	fmt.Printf("page size P95: %dKB\n", pageSizeP95)
-	pageSizeP99 := percentile(0.99, pageSizeCounts, sizeBuckets)
-	fmt.Printf("page size P99: %dKB\n", pageSizeP99)
 }
 
-func percentile(p float64, counts []int, buckets []int) int {
-	total := 0
-	for _, i := range counts {
-		total += i
-	}
-
-	rank := int(math.Ceil(p * float64(total)))
-
-	cumulative := 0
-	for i, val := range counts {
-		cumulative += val
-		if cumulative >= rank {
-			lower := 0
-			if i > 0 {
-				lower = buckets[i-1]
-			}
-			if i == len(counts)-1 {
-				return buckets[len(buckets)-2]
-			}
-			upper := buckets[i]
-			fraction := float64(rank-(cumulative-val)) / float64(val)
-			return lower + int(fraction*float64(upper-lower))
-		}
-	}
-	return buckets[len(buckets)-2]
-}
-
-func incCounts(value int, Counts []int, Buckets []int) {
-	for i, bucket := range Buckets {
-		if value <= bucket {
-			Counts[i]++
-			return
-		}
-	}
-}
-
-func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, metrics *metrics.Metrics) {
+func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Metrics) {
 
 	for {
 		rawUrl, ok := crawler.Next()
 		if !ok {
 			return
 		}
-		metrics.Claim()
-		var latency Latency
+		crawlerMetrics.Claim()
+		var pageLatency metrics.PageLatency
 
 		start := time.Now()
 
@@ -350,7 +276,7 @@ func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, m
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 			crawler.Fail(rawUrl)
-			metrics.Complete(false)
+			crawlerMetrics.Complete(false)
 			continue
 		}
 
@@ -359,34 +285,33 @@ func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, m
 		resp.Body.Close()
 
 		fetchTime := time.Since(start)
-		latency.FetchMs = int(fetchTime.Milliseconds())
+		pageLatency.FetchMs = int(fetchTime.Milliseconds())
 
 		if err != nil {
 			totalTime := time.Since(start)
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
 			crawler.Fail(rawUrl)
-			metrics.Complete(false)
+			crawlerMetrics.Complete(false)
 			continue
 		}
 
-		pageSizeKB := int(len(body) / 1024)
-		latency.PageSizeKB = int(len(body) / 1024)
+		pageLatency.PageSizeKB = int(len(body) / 1024)
 
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		links, parseTime := parser.Parse(resp, base)
-		latency.ParseMs = int(parseTime.Milliseconds())
+		pageLatency.ParseMs = int(parseTime.Milliseconds())
 
 		totalTime := time.Since(start)
-		latency.TotalMs = int(totalTime.Milliseconds())
-		timeSpent := fmt.Sprintf("total %dms | fetch %dms | parse %dms | size %dKB | %d links", totalTime.Milliseconds(), fetchTime.Milliseconds(), parseTime.Milliseconds(), pageSizeKB, len(links))
+		pageLatency.TotalMs = int(totalTime.Milliseconds())
+		timeSpent := fmt.Sprintf("total %dms | fetch %dms | parse %dms | size %dKB | %d links", totalTime.Milliseconds(), fetchTime.Milliseconds(), parseTime.Milliseconds(), pageLatency.PageSizeKB, len(links))
 
 		fmt.Printf("OK %s (%s)\n", rawUrl, timeSpent)
 
-		latencyChannel <- latency
+		lm.Record(pageLatency)
 
 		crawler.Done(rawUrl, links)
-		metrics.Complete(true)
+		crawlerMetrics.Complete(true)
 
 	}
 }
