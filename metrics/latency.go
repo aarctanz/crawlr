@@ -17,10 +17,10 @@ type PageLatency struct {
 type LatencyMetrics struct {
 	latencyChannel chan PageLatency
 
-	FetchLatencyCount []int
-	PageSizeKBCount   []int
-	ParseLatencyCount []int
-	TotalLatencyCount []int
+	fetchLatencyCount []int
+	pageSizeKBCount   []int
+	parseLatencyCount []int
+	totalLatencyCount []int
 
 	done chan struct{}
 }
@@ -33,10 +33,10 @@ var (
 func NewLatencyMetrics(maxPages int) *LatencyMetrics {
 	return &LatencyMetrics{
 		latencyChannel:    make(chan PageLatency, maxPages),
-		FetchLatencyCount: make([]int, len(latencyBuckets)),
-		PageSizeKBCount:   make([]int, len(sizeBuckets)),
-		ParseLatencyCount: make([]int, len(latencyBuckets)),
-		TotalLatencyCount: make([]int, len(latencyBuckets)),
+		fetchLatencyCount: make([]int, len(latencyBuckets)),
+		pageSizeKBCount:   make([]int, len(sizeBuckets)),
+		parseLatencyCount: make([]int, len(latencyBuckets)),
+		totalLatencyCount: make([]int, len(latencyBuckets)),
 		done:              make(chan struct{}),
 	}
 }
@@ -52,36 +52,36 @@ func (lm *LatencyMetrics) Record(latency PageLatency) {
 
 func (lm *LatencyMetrics) UpdateCounts() {
 	for latency := range lm.latencyChannel {
-		incCounts(latency.FetchMs, lm.FetchLatencyCount, latencyBuckets)
-		incCounts(latency.ParseMs, lm.ParseLatencyCount, latencyBuckets)
-		incCounts(latency.PageSizeKB, lm.PageSizeKBCount, sizeBuckets)
-		incCounts(latency.TotalMs, lm.TotalLatencyCount, latencyBuckets)
+		incCounts(latency.FetchMs, lm.fetchLatencyCount, latencyBuckets)
+		incCounts(latency.ParseMs, lm.parseLatencyCount, latencyBuckets)
+		incCounts(latency.PageSizeKB, lm.pageSizeKBCount, sizeBuckets)
+		incCounts(latency.TotalMs, lm.totalLatencyCount, latencyBuckets)
 	}
 	close(lm.done)
 }
 
 func (lm *LatencyMetrics) FetchPercentile(p float64) int {
-	return percentile(p, lm.FetchLatencyCount, latencyBuckets)
+	return percentile(p, lm.fetchLatencyCount, latencyBuckets)
 }
 
 func (lm *LatencyMetrics) ParsePercentile(p float64) int {
-	return percentile(p, lm.ParseLatencyCount, latencyBuckets)
+	return percentile(p, lm.parseLatencyCount, latencyBuckets)
 }
 
 func (lm *LatencyMetrics) PageSizePercentile(p float64) int {
-	return percentile(p, lm.PageSizeKBCount, sizeBuckets)
+	return percentile(p, lm.pageSizeKBCount, sizeBuckets)
 }
 
 func (lm *LatencyMetrics) TotalPercentile(p float64) int {
-	return percentile(p, lm.TotalLatencyCount, latencyBuckets)
+	return percentile(p, lm.totalLatencyCount, latencyBuckets)
 }
 
 func (lm *LatencyMetrics) Report() string {
 	var b strings.Builder
-	renderHistogram(&b, "Fetch latency", "ms", lm.FetchLatencyCount, latencyBuckets)
-	renderHistogram(&b, "Parse latency", "ms", lm.ParseLatencyCount, latencyBuckets)
-	renderHistogram(&b, "Total latency", "ms", lm.TotalLatencyCount, latencyBuckets)
-	renderHistogram(&b, "Page size", "KB", lm.PageSizeKBCount, sizeBuckets)
+	renderHistogram(&b, "Fetch latency", "ms", lm.fetchLatencyCount, latencyBuckets)
+	renderHistogram(&b, "Parse latency", "ms", lm.parseLatencyCount, latencyBuckets)
+	renderHistogram(&b, "Total latency", "ms", lm.totalLatencyCount, latencyBuckets)
+	renderHistogram(&b, "Page size", "KB", lm.pageSizeKBCount, sizeBuckets)
 	return b.String()
 }
 
