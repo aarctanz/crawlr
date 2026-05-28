@@ -11,9 +11,9 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/aarctanz/crawlr/metrics"
 	"github.com/aarctanz/crawlr/parser"
 )
 
@@ -32,7 +32,7 @@ type TimeSeriesSample struct {
 	Goroutines    int
 }
 
-func (c *CrawlerStats) update(met *Metrics, currentTime time.Time) {
+func (c *CrawlerStats) update(met *metrics.Metrics, currentTime time.Time) {
 	var s TimeSeriesSample
 	s.ElapsedS = int64(currentTime.Sub(c.StartTime).Seconds())
 
@@ -155,28 +155,6 @@ func (c *Crawler) Next() (string, bool) {
 	}
 }
 
-type Metrics struct {
-	Claimed atomic.Int64
-	Crawled atomic.Int64
-	Success atomic.Int64
-}
-
-func (m *Metrics) Claim() {
-	m.Claimed.Add(1)
-}
-
-func (m *Metrics) Complete(ok bool) {
-	m.Crawled.Add(1)
-	if ok {
-		m.Success.Add(1)
-	}
-}
-
-func (m *Metrics) Snapshot() (claimed, crawled, success, active int64) {
-	c, d, s := m.Claimed.Load(), m.Crawled.Load(), m.Success.Load()
-	return c, d, s, c - d
-}
-
 func (c *Crawler) Fail(url string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -229,7 +207,7 @@ func main() {
 	}
 
 	crawler := NewCrawler(seed, maxPages)
-	metrics := Metrics{}
+	metrics := metrics.Metrics{}
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -278,7 +256,7 @@ func main() {
 	}()
 
 	workerWg := sync.WaitGroup{}
-	for i := range 300 * runtime.NumCPU() {
+	for i := range runtime.NumCPU() {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
@@ -353,7 +331,7 @@ func incCounts(value int, Counts []int, Buckets []int) {
 	}
 }
 
-func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, metrics *Metrics) {
+func worker(crawler *Crawler, done chan struct{}, latencyChannel chan Latency, metrics *metrics.Metrics) {
 
 	for {
 		rawUrl, ok := crawler.Next()
