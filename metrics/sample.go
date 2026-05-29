@@ -20,13 +20,16 @@ type Sampler struct {
 }
 
 type TimeSeriesSample struct {
-	ElapsedS      int64
-	Crawled       int64
-	Claimed       int64
-	Success       int64
+	ElapsedS int64
+	Queued   int64
+	Claimed  int64
+	Crawled  int64
+	Success  int64
+	HTTP429  int64
+
 	ActiveWorkers int64
-	HeapMB        float64
 	Goroutines    int
+	HeapMB        float64
 }
 
 func NewSampler(crawlMetrics *Counter) *Sampler {
@@ -44,7 +47,7 @@ func (s *Sampler) sample(currentTime time.Time) {
 	var sam TimeSeriesSample
 	sam.ElapsedS = int64(currentTime.Sub(s.StartTime).Seconds())
 
-	sam.Claimed, sam.Crawled, sam.Success, sam.ActiveWorkers = s.crawlMetrics.Snapshot()
+	sam.Queued, sam.Claimed, sam.Crawled, sam.Success, sam.HTTP429, sam.ActiveWorkers = s.crawlMetrics.Snapshot()
 
 	sam.Goroutines = runtime.NumGoroutine()
 

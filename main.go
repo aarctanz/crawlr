@@ -136,7 +136,7 @@ func (c *Crawler) Fail(url string) {
 	}
 }
 
-func (c *Crawler) Done(url string, links []string) {
+func (c *Crawler) Done(url string, links []string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -145,13 +145,16 @@ func (c *Crawler) Done(url string, links []string) {
 
 	if len(c.crawled) >= c.MaxPages {
 		c.Shutdown()
-		return
+		return 0
 	}
 
+	t := 0
 	if !c.IsShutdown {
 		c.Que.Enqueue(links)
+		t = len(links)
 	}
 	c.cond.Broadcast()
+	return t
 }
 
 func main() {
@@ -177,7 +180,7 @@ func main() {
 	go lm.Run()
 
 	workerWg := sync.WaitGroup{}
-	for i := range runtime.NumCPU() {
+	for i := range 100 * runtime.NumCPU() {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
@@ -221,12 +224,20 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 
 		start := time.Now()
 
-		resp, err := fetch(rawUrl)
+		resp, err := httpClient.Get(rawUrl)
 		if err != nil {
-			fetchTime := time.Since(start)
-			totalTime := time.Since(start)
-			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
-			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
+			fmt.Printf("ERR %s: %v (%dms)\n", rawUrl, err, time.Since(start).Milliseconds())
+			crawler.Fail(rawUrl)
+			crawlerMetrics.Complete(false)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			if resp.StatusCode == http.StatusTooManyRequests {
+				crawlerMetrics.ErrHTTP429()
+			}
+			resp.Body.Close()
+			fmt.Printf("ERR %s: HTTP %d (%dms)\n", rawUrl, resp.StatusCode, time.Since(start).Milliseconds())
 			crawler.Fail(rawUrl)
 			crawlerMetrics.Complete(false)
 			continue
@@ -262,22 +273,9 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 
 		lm.Record(pageLatency)
 
-		crawler.Done(rawUrl, links)
+		t := crawler.Done(rawUrl, links)
 		crawlerMetrics.Complete(true)
+		crawlerMetrics.Queue(int64(t))
 
 	}
-}
-
-func fetch(rawURL string) (*http.Response, error) {
-	resp, err := httpClient.Get(rawURL)
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	return resp, nil
 }
