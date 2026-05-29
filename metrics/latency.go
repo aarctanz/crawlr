@@ -50,7 +50,7 @@ func (lm *LatencyMetrics) Record(latency PageLatency) {
 	lm.latencyChannel <- latency
 }
 
-func (lm *LatencyMetrics) UpdateCounts() {
+func (lm *LatencyMetrics) Run() {
 	for latency := range lm.latencyChannel {
 		incCounts(latency.FetchMs, lm.fetchLatencyCount, latencyBuckets)
 		incCounts(latency.ParseMs, lm.parseLatencyCount, latencyBuckets)

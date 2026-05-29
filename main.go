@@ -2,10 +2,8 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"runtime"
@@ -16,36 +14,6 @@ import (
 	"github.com/aarctanz/crawlr/metrics"
 	"github.com/aarctanz/crawlr/parser"
 )
-
-type CrawlerStats struct {
-	Sample    []TimeSeriesSample
-	StartTime time.Time
-}
-
-type TimeSeriesSample struct {
-	ElapsedS      int64
-	Crawled       int64
-	Claimed       int64
-	Success       int64
-	ActiveWorkers int64
-	HeapMB        float64
-	Goroutines    int
-}
-
-func (c *CrawlerStats) update(met *metrics.Metrics, currentTime time.Time) {
-	var s TimeSeriesSample
-	s.ElapsedS = int64(currentTime.Sub(c.StartTime).Seconds())
-
-	s.Claimed, s.Crawled, s.Success, s.ActiveWorkers = met.Snapshot()
-
-	s.Goroutines = runtime.NumGoroutine()
-
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	s.HeapMB = float64(m.HeapAlloc) / 1024 / 1024
-	s.HeapMB = math.Trunc(s.HeapMB*100) / 100
-	c.Sample = append(c.Sample, s)
-}
 
 var httpClient = &http.Client{
 	Timeout: 20 * time.Second,
@@ -202,29 +170,11 @@ func main() {
 	crawler := NewCrawler(seed, maxPages)
 	crawlMetrics := metrics.Metrics{}
 
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	done := make(chan struct{})
-
-	start := time.Now()
-	crawlerStats := CrawlerStats{StartTime: start}
-	statsDone := make(chan struct{})
-	go func(t *time.Ticker) {
-		defer close(statsDone)
-		for {
-			select {
-			case <-done:
-				crawlerStats.update(&crawlMetrics, time.Now())
-				return
-
-			case t := <-t.C:
-				crawlerStats.update(&crawlMetrics, t)
-			}
-		}
-	}(ticker)
+	sampler := metrics.NewSampler(&crawlMetrics)
+	go sampler.Run()
 
 	lm := metrics.NewLatencyMetrics(maxPages)
-	go lm.UpdateCounts()
+	go lm.Run()
 
 	workerWg := sync.WaitGroup{}
 	for i := range runtime.NumCPU() {
@@ -235,15 +185,15 @@ func main() {
 			worker(crawler, lm, &crawlMetrics)
 		}()
 	}
-	workerWg.Wait()
 
-	close(done)
+	workerWg.Wait()
 	lm.WaitAndClose()
+	sampler.WaitAndClose()
+
+	fmt.Printf("\n\n████ Crawler Stats ████\n\n")
 	fmt.Println(lm.Report())
 
-	<-statsDone
-
-	totalTime := time.Since(start)
+	totalTime := time.Since(sampler.StartTime)
 	fmt.Printf("crawled %d pages, total time: %.2fs\n", crawlMetrics.Crawled.Load(), totalTime.Seconds())
 	fmt.Printf("Success: %d\n", crawlMetrics.Success.Load())
 
@@ -253,8 +203,10 @@ func main() {
 		return
 	}
 	defer file.Close()
-	encoder := json.NewEncoder(file)
-	encoder.Encode(crawlerStats)
+	err = sampler.EncodeTo(file)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Metrics) {
