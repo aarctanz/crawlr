@@ -168,7 +168,7 @@ func main() {
 	}
 
 	crawler := NewCrawler(seed, maxPages)
-	crawlMetrics := metrics.Metrics{}
+	crawlMetrics := metrics.Counter{}
 
 	sampler := metrics.NewSampler(&crawlMetrics)
 	go sampler.Run()
@@ -209,7 +209,7 @@ func main() {
 	}
 }
 
-func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Metrics) {
+func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Counter) {
 
 	for {
 		rawUrl, ok := crawler.Next()

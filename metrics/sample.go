@@ -12,7 +12,7 @@ type Sampler struct {
 	TimeSeriesSamples []TimeSeriesSample
 	StartTime         time.Time
 
-	crawlMetrics *Metrics
+	crawlMetrics *Counter
 	ticker       *time.Ticker
 
 	stop chan struct{}
@@ -29,7 +29,7 @@ type TimeSeriesSample struct {
 	Goroutines    int
 }
 
-func NewSampler(crawlMetrics *Metrics) *Sampler {
+func NewSampler(crawlMetrics *Counter) *Sampler {
 	return &Sampler{
 		TimeSeriesSamples: []TimeSeriesSample{},
 		StartTime:         time.Now(),
