@@ -1,0 +1,148 @@
+{
+  "TimeSeriesSamples": [
+    {
+      "ElapsedS": 5,
+      "Queued": 398259,
+      "Claimed": 5214,
+      "Crawled": 3214,
+      "Success": 3090,
+      "HTTP429": 12,
+      "ActiveWorkers": 2000,
+      "Goroutines": 4271,
+      "HeapMB": 174
+    },
+    {
+      "ElapsedS": 10,
+      "Queued": 1072793,
+      "Claimed": 10777,
+      "Crawled": 8777,
+      "Success": 7772,
+      "HTTP429": 742,
+      "ActiveWorkers": 2000,
+      "Goroutines": 4154,
+      "HeapMB": 771.77
+    },
+    {
+      "ElapsedS": 15,
+      "Queued": 1637774,
+      "Claimed": 16040,
+      "Crawled": 14040,
+      "Success": 11583,
+      "HTTP429": 1680,
+      "ActiveWorkers": 2000,
+      "Goroutines": 4514,
+      "HeapMB": 665.96
+    },
+    {
+      "ElapsedS": 20,
+      "Queued": 1994892,
+      "Claimed": 21617,
+      "Crawled": 19617,
+      "Success": 13707,
+      "HTTP429": 3651,
+      "ActiveWorkers": 2000,
+      "Goroutines": 4689,
+      "HeapMB": 616.1
+    },
+    {
+      "ElapsedS": 25,
+      "Queued": 2265258,
+      "Claimed": 26756,
+      "Crawled": 24756,
+      "Success": 15635,
+      "HTTP429": 5791,
+      "ActiveWorkers": 2000,
+      "Goroutines": 5091,
+      "HeapMB": 466.56
+    },
+    {
+      "ElapsedS": 30,
+      "Queued": 2530862,
+      "Claimed": 30163,
+      "Crawled": 28163,
+      "Success": 17230,
+      "HTTP429": 7151,
+      "ActiveWorkers": 2000,
+      "Goroutines": 4998,
+      "HeapMB": 818.1
+    },
+    {
+      "ElapsedS": 35,
+      "Queued": 3074022,
+      "Claimed": 35124,
+      "Crawled": 33124,
+      "Success": 19506,
+      "HTTP429": 9226,
+      "ActiveWorkers": 2000,
+      "Goroutines": 5370,
+      "HeapMB": 1229.46
+    },
+    {
+      "ElapsedS": 40,
+      "Queued": 4038908,
+      "Claimed": 51056,
+      "Crawled": 49056,
+      "Success": 23364,
+      "HTTP429": 16893,
+      "ActiveWorkers": 2000,
+      "Goroutines": 5799,
+      "HeapMB": 940.97
+    },
+    {
+      "ElapsedS": 45,
+      "Queued": 4124216,
+      "Claimed": 51999,
+      "Crawled": 51822,
+      "Success": 24706,
+      "HTTP429": 17956,
+      "ActiveWorkers": 177,
+      "Goroutines": 1894,
+      "HeapMB": 1084.94
+    },
+    {
+      "ElapsedS": 50,
+      "Queued": 4124216,
+      "Claimed": 51999,
+      "Crawled": 51905,
+      "Success": 24776,
+      "HTTP429": 17958,
+      "ActiveWorkers": 94,
+      "Goroutines": 1701,
+      "HeapMB": 608.81
+    },
+    {
+      "ElapsedS": 55,
+      "Queued": 4124216,
+      "Claimed": 51999,
+      "Crawled": 51906,
+      "Success": 24776,
+      "HTTP429": 17958,
+      "ActiveWorkers": 93,
+      "Goroutines": 1691,
+      "HeapMB": 608.81
+    },
+    {
+      "ElapsedS": 60,
+      "Queued": 4124216,
+      "Claimed": 51999,
+      "Crawled": 51947,
+      "Success": 24776,
+      "HTTP429": 17958,
+      "ActiveWorkers": 52,
+      "Goroutines": 1236,
+      "HeapMB": 608.87
+    },
+    {
+      "ElapsedS": 60,
+      "Queued": 4124216,
+      "Claimed": 51999,
+      "Crawled": 51999,
+      "Success": 24776,
+      "HTTP429": 17958,
+      "ActiveWorkers": 0,
+      "Goroutines": 1131,
+      "HeapMB": 608.89
+    }
+  ],
+  "StartTime": "2026-05-29T18:13:46.735612121+05:30"
+}
