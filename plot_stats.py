@@ -73,6 +73,7 @@ def load_samples(stats_path: Path) -> list[dict]:
                 "crawled": s.get("Crawled", s.get("PagesTotal", 0)),
                 "success": s.get("Success", 0),
                 "http429": s.get("HTTP429", 0),
+                "active": s.get("ActiveWorkers", 0),
                 "heap": s.get("HeapMB", 0.0),
                 "goroutines": s.get("Goroutines", 0),
             }
@@ -216,9 +217,12 @@ def main() -> None:
     )
     make_chart(
         out_dir / "goroutines.png", x,
-        [("Goroutines", col("goroutines"), ORANGE)],
-        title="Goroutines", subtitle="Goroutine count during execution",
-        ylabel="Goroutines", footer=footer, step=True,
+        [
+            ("Goroutines", col("goroutines"), ORANGE),
+            ("Active workers", col("active"), TEAL),
+        ],
+        title="Goroutines", subtitle="Goroutine count and active workers during execution",
+        ylabel="Count", footer=footer, step=True,
     )
     make_chart(
         out_dir / "heap_mb.png", x,
