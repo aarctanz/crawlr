@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/aarctanz/crawlr/metrics"
 	"github.com/aarctanz/crawlr/parser"
+	"golang.org/x/time/rate"
 )
 
 var httpClient = &http.Client{
@@ -64,6 +66,8 @@ type Crawler struct {
 	ActiveWorkers int
 	IsShutdown    bool
 	Que           *Queue
+
+	Limiter *rate.Limiter
 }
 
 func NewCrawler(seed string, maxPages int) *Crawler {
@@ -83,6 +87,7 @@ func NewCrawler(seed string, maxPages int) *Crawler {
 		mu:         &mu,
 		cond:       cond,
 		IsShutdown: false,
+		Limiter:    rate.NewLimiter(rate.Every(500*time.Millisecond), 5),
 	}
 }
 
@@ -180,7 +185,7 @@ func main() {
 	go lm.Run()
 
 	workerWg := sync.WaitGroup{}
-	for i := range 100 * runtime.NumCPU() {
+	for i := range 5 * runtime.NumCPU() {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
@@ -219,6 +224,7 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 		if !ok {
 			return
 		}
+		crawler.Limiter.Wait(context.Background())
 		crawlerMetrics.Claim()
 		var pageLatency metrics.PageLatency
 
