@@ -14,47 +14,12 @@ import (
 
 	"github.com/aarctanz/crawlr/metrics"
 	"github.com/aarctanz/crawlr/parser"
+	"github.com/aarctanz/crawlr/queue"
 	"golang.org/x/time/rate"
 )
 
 var httpClient = &http.Client{
 	Timeout: 20 * time.Second,
-}
-
-type Queue struct {
-	queue []string
-	head  int
-}
-
-func NewQueue() *Queue {
-	return &Queue{
-		head:  0,
-		queue: make([]string, 0, 4096),
-	}
-}
-
-func (q *Queue) Enqueue(urls []string) {
-	q.queue = append(q.queue, urls...)
-}
-
-func (q *Queue) Dequeue() (string, bool) {
-	if q.head == len(q.queue) {
-		return "", false
-	}
-
-	url := q.queue[q.head]
-	q.queue[q.head] = ""
-	q.head += 1
-	if q.head > len(q.queue)/2 {
-		n := copy(q.queue, q.queue[q.head:])
-		q.queue = q.queue[:n]
-		q.head = 0
-	}
-	return url, true
-}
-
-func (q *Queue) Len() int {
-	return len(q.queue) - q.head
 }
 
 type Crawler struct {
@@ -65,7 +30,7 @@ type Crawler struct {
 	MaxPages      int
 	ActiveWorkers int
 	IsShutdown    bool
-	Que           *Queue
+	Que           *queue.Queue
 
 	Limiter *rate.Limiter
 }
@@ -76,7 +41,7 @@ func NewCrawler(seed string, maxPages int) *Crawler {
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
 
-	queue := NewQueue()
+	queue := queue.NewQueue()
 	queue.Enqueue([]string{seed})
 
 	return &Crawler{
