@@ -33,11 +33,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 # Typography and the greys used for chrome.
-INK = "#16213e"     # titles
-MUTED = "#5c6b7a"   # subtitle, tick labels
-FAINT = "#98a0ab"   # footer
-GRID = "#e6e8ec"    # horizontal gridlines
-SPINE = "#d4d8de"   # the two spines we keep
+INK = "#16213e"  # titles
+MUTED = "#5c6b7a"  # subtitle, tick labels
+FAINT = "#98a0ab"  # footer
+GRID = "#e6e8ec"  # horizontal gridlines
+SPINE = "#d4d8de"  # the two spines we keep
 
 plt.rcParams.update(
     {
@@ -136,18 +136,35 @@ def make_chart(
     drawstyle = "steps-post" if step else "default"
     for label, y, colour in series:
         ax.plot(
-            x, y,
-            color=colour, linewidth=2.3, label=label,
-            marker="" if step else "o", markersize=4, drawstyle=drawstyle,
+            x,
+            y,
+            color=colour,
+            linewidth=2.3,
+            label=label,
+            marker="" if step else "o",
+            markersize=4,
+            drawstyle=drawstyle,
         )
 
     if shade_gap and len(series) >= 2:
         upper, lower = series[0][1], series[1][1]
-        ax.fill_between(x, lower, upper, color=series[0][2], alpha=0.12,
-                        step="post" if step else None)
+        ax.fill_between(
+            x,
+            lower,
+            upper,
+            color=series[0][2],
+            alpha=0.12,
+            step="post" if step else None,
+        )
     elif len(series) == 1:
-        ax.fill_between(x, 0, series[0][1], color=series[0][2], alpha=0.12,
-                        step="post" if step else None)
+        ax.fill_between(
+            x,
+            0,
+            series[0][1],
+            color=series[0][2],
+            alpha=0.12,
+            step="post" if step else None,
+        )
 
     style_axes(ax, integer_y=integer_y)
     ax.set_xlabel("Seconds", fontsize=13, color=INK)
@@ -155,11 +172,18 @@ def make_chart(
     if len(series) > 1:
         ax.legend(frameon=False, loc="upper left", fontsize=11, labelcolor=INK)
 
-    fig.text(0.08, 0.93, f"Crawler Stats — {title}", fontsize=21,
-             fontweight="bold", color=INK)
+    fig.text(
+        0.08,
+        0.93,
+        f"Crawler Stats — {title}",
+        fontsize=21,
+        fontweight="bold",
+        color=INK,
+    )
     fig.text(0.08, 0.87, subtitle, fontsize=12.5, fontweight="bold", color=MUTED)
-    fig.text(0.08, 0.035, footer, fontsize=9.5, color=FAINT,
-             linespacing=1.6, va="bottom")
+    fig.text(
+        0.08, 0.035, footer, fontsize=9.5, color=FAINT, linespacing=1.6, va="bottom"
+    )
 
     fig.savefig(dest)
     plt.close(fig)
@@ -181,10 +205,14 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument(
-        "stats", nargs="?", default="stats.json",
+        "stats",
+        nargs="?",
+        default="stats.json",
         help="path to stats.json, or a directory containing one (default: stats.json)",
     )
-    parser.add_argument("-o", "--out", help="output directory (default: alongside stats.json)")
+    parser.add_argument(
+        "-o", "--out", help="output directory (default: alongside stats.json)"
+    )
     args = parser.parse_args()
 
     stats_path, out_dir = resolve_paths(args.stats, args.out)
@@ -198,13 +226,18 @@ def main() -> None:
     failed = [s["crawled"] - s["success"] for s in samples]
 
     make_chart(
-        out_dir / "queued_vs_claimed.png", x,
+        out_dir / "queued_vs_claimed.png",
+        x,
         [("Queued", col("queued"), INDIGO), ("Claimed", col("claimed"), TEAL)],
-        title="Queue", subtitle="Links discovered vs picked up by workers",
-        ylabel="URLs", footer=footer, shade_gap=True,
+        title="Queue",
+        subtitle="Links discovered vs picked up by workers",
+        ylabel="URLs",
+        footer=footer,
+        shade_gap=True,
     )
     make_chart(
-        out_dir / "outcomes.png", x,
+        out_dir / "outcomes.png",
+        x,
         [
             ("Crawled", col("crawled"), INDIGO),
             ("Success", col("success"), GREEN),
@@ -213,22 +246,42 @@ def main() -> None:
         ],
         title="Outcomes",
         subtitle="Pages crawled, succeeded, failed, and rate-limited",
-        ylabel="Pages", footer=footer,
+        ylabel="Pages",
+        footer=footer,
     )
     make_chart(
-        out_dir / "goroutines.png", x,
+        out_dir / "goroutines.png",
+        x,
         [
             ("Goroutines", col("goroutines"), ORANGE),
-            ("Active workers", col("active"), TEAL),
         ],
-        title="Goroutines", subtitle="Goroutine count and active workers during execution",
-        ylabel="Count", footer=footer, step=True,
+        title="Goroutines",
+        subtitle="Goroutine count during execution",
+        ylabel="Count",
+        footer=footer,
+        step=True,
     )
     make_chart(
-        out_dir / "heap_mb.png", x,
+        out_dir / "heap_mb.png",
+        x,
         [("Heap", col("heap"), VIOLET)],
-        title="Heap Memory", subtitle="Heap allocation across the crawl",
-        ylabel="Heap memory (MB)", footer=footer, integer_y=False,
+        title="Heap Memory",
+        subtitle="Heap allocation across the crawl",
+        ylabel="Heap memory (MB)",
+        footer=footer,
+        integer_y=False,
+    )
+    make_chart(
+        out_dir / "active_workers.png",
+        x,
+        [
+            ("Active workers", col("active"), TEAL),
+        ],
+        title="Active Workers",
+        subtitle="Active workers during execution",
+        ylabel="Count",
+        footer=footer,
+        step=True,
     )
 
 

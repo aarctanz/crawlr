@@ -62,6 +62,7 @@ func (s *Sampler) sample(currentTime time.Time) {
 func (s *Sampler) Run() {
 	defer close(s.done)
 	defer s.ticker.Stop()
+	s.sample(time.Now())
 	for {
 		select {
 		case <-s.stop:
