@@ -12,119 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aarctanz/crawlr/frontier"
 	"github.com/aarctanz/crawlr/metrics"
 	"github.com/aarctanz/crawlr/parser"
-	"github.com/aarctanz/crawlr/queue"
-	"golang.org/x/time/rate"
 )
 
 var httpClient = &http.Client{
 	Timeout: 20 * time.Second,
-}
-
-type Crawler struct {
-	crawled       map[string]struct{}
-	claimed       map[string]struct{}
-	mu            *sync.Mutex
-	cond          *sync.Cond
-	MaxPages      int
-	ActiveWorkers int
-	IsShutdown    bool
-	Que           *queue.Queue
-
-	Limiter *rate.Limiter
-}
-
-func NewCrawler(seed string, maxPages int) *Crawler {
-	crawled := make(map[string]struct{})
-	claimed := make(map[string]struct{})
-	var mu sync.Mutex
-	cond := sync.NewCond(&mu)
-
-	queue := queue.NewQueue()
-	queue.Enqueue([]string{seed})
-
-	return &Crawler{
-		MaxPages:   maxPages,
-		Que:        queue,
-		crawled:    crawled,
-		claimed:    claimed,
-		mu:         &mu,
-		cond:       cond,
-		IsShutdown: false,
-		Limiter:    rate.NewLimiter(rate.Every(500*time.Millisecond), 5),
-	}
-}
-
-func (c *Crawler) Shutdown() {
-	c.IsShutdown = true
-	c.cond.Broadcast()
-}
-
-func (c *Crawler) Next() (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for {
-		if c.IsShutdown {
-			return "", false
-		}
-
-		if len(c.crawled) >= c.MaxPages {
-			c.Shutdown()
-			return "", false
-		}
-
-		if c.Que.Len() > 0 {
-			url, _ := c.Que.Dequeue()
-			if _, dup := c.claimed[url]; dup {
-				continue
-			}
-			c.claimed[url] = struct{}{}
-			c.ActiveWorkers++
-			return url, true
-		}
-
-		if c.ActiveWorkers == 0 {
-			c.Shutdown()
-			return "", false
-		}
-
-		c.cond.Wait()
-	}
-}
-
-func (c *Crawler) Fail(url string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.crawled[url] = struct{}{}
-	c.ActiveWorkers--
-
-	if len(c.crawled) >= c.MaxPages {
-		c.Shutdown()
-		c.cond.Broadcast()
-	}
-}
-
-func (c *Crawler) Done(url string, links []string) int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	c.ActiveWorkers--
-	c.crawled[url] = struct{}{}
-
-	if len(c.crawled) >= c.MaxPages {
-		c.Shutdown()
-		return 0
-	}
-
-	t := 0
-	if !c.IsShutdown {
-		c.Que.Enqueue(links)
-		t = len(links)
-	}
-	c.cond.Broadcast()
-	return t
 }
 
 func main() {
@@ -140,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	crawler := NewCrawler(seed, maxPages)
+	f := frontier.NewFrontier(seed, maxPages)
 	crawlMetrics := metrics.Counter{}
 
 	sampler := metrics.NewSampler(&crawlMetrics)
@@ -155,7 +49,7 @@ func main() {
 		workerWg.Add(1)
 		go func() {
 			defer workerWg.Done()
-			worker(crawler, lm, &crawlMetrics)
+			worker(f, lm, &crawlMetrics)
 		}()
 	}
 
@@ -182,14 +76,14 @@ func main() {
 	}
 }
 
-func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Counter) {
+func worker(f *frontier.Frontier, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Counter) {
 
 	for {
-		rawUrl, ok := crawler.Next()
+		rawUrl, ok := f.Next()
 		if !ok {
 			return
 		}
-		crawler.Limiter.Wait(context.Background())
+		f.Limiter.Wait(context.Background())
 		crawlerMetrics.Claim()
 		var pageLatency metrics.PageLatency
 
@@ -198,7 +92,7 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 		resp, err := httpClient.Get(rawUrl)
 		if err != nil {
 			fmt.Printf("ERR %s: %v (%dms)\n", rawUrl, err, time.Since(start).Milliseconds())
-			crawler.Fail(rawUrl)
+			f.Fail(rawUrl)
 			crawlerMetrics.Complete(false)
 			continue
 		}
@@ -209,7 +103,7 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 			}
 			resp.Body.Close()
 			fmt.Printf("ERR %s: HTTP %d (%dms)\n", rawUrl, resp.StatusCode, time.Since(start).Milliseconds())
-			crawler.Fail(rawUrl)
+			f.Fail(rawUrl)
 			crawlerMetrics.Complete(false)
 			continue
 		}
@@ -225,7 +119,7 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 			totalTime := time.Since(start)
 			totalTimeString := fmt.Sprintf("total %dms | fetch %dms", totalTime.Milliseconds(), fetchTime.Milliseconds())
 			fmt.Printf("ERR %s: %v (%s)\n", rawUrl, err, totalTimeString)
-			crawler.Fail(rawUrl)
+			f.Fail(rawUrl)
 			crawlerMetrics.Complete(false)
 			continue
 		}
@@ -244,7 +138,7 @@ func worker(crawler *Crawler, lm *metrics.LatencyMetrics, crawlerMetrics *metric
 
 		lm.Record(pageLatency)
 
-		t := crawler.Done(rawUrl, links)
+		t := f.Done(rawUrl, links)
 		crawlerMetrics.Complete(true)
 		crawlerMetrics.Queue(int64(t))
 
