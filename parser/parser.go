@@ -65,11 +65,11 @@ func normalizeURL(u *url.URL) {
 	sortURLQueryParams(u)
 }
 
-func Parse(resp *http.Response, base *url.URL) ([]string, time.Duration) {
+func Parse(resp *http.Response, base *url.URL) (map[string][]string, time.Duration) {
 	now := time.Now()
 
 	z := html.NewTokenizer(resp.Body)
-	var links []string
+	links := make(map[string][]string)
 
 	for {
 		tt := z.Next()
@@ -89,7 +89,12 @@ func Parse(resp *http.Response, base *url.URL) ([]string, time.Duration) {
 						link, err := verifyValidURL(string(v), base)
 						if err == nil {
 							normalizeURL(link)
-							links = append(links, link.String())
+							_, ok := links[link.Host]
+							if !ok {
+								links[link.Host] = []string{link.String()}
+							} else {
+								links[link.Host] = append(links[link.Host], link.String())
+							}
 						}
 					}
 					if !more {
