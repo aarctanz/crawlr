@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -18,12 +18,12 @@ import (
 )
 
 var httpClient = &http.Client{
-	Timeout: 20 * time.Second,
+	Timeout: 10 * time.Second,
 }
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "usage: crawlr <seed-url> <max-pages>\n")
+		fmt.Fprintf(os.Stderr, "usage: crawlr <seed-url> <max-pages> [num-workers]\n")
 		os.Exit(1)
 	}
 
@@ -33,8 +33,23 @@ func main() {
 		fmt.Fprintf(os.Stderr, "max-pages must be an integer\n")
 		os.Exit(1)
 	}
-
-	f := frontier.NewFrontier(seed, maxPages)
+	seedURL, err := url.Parse(seed)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "seed-url must be a valid URL\n")
+		os.Exit(1)
+	}
+	var numWorkers int
+	if len(os.Args) >= 4 {
+		numWorkers, err = strconv.Atoi(os.Args[3])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "num-workers must be an integer\n")
+			os.Exit(1)
+		}
+	} else {
+		numWorkers = 20 * runtime.NumCPU()
+	}
+	f := frontier.NewFrontier(numWorkers, seed, seedURL.Host, maxPages, 500*time.Millisecond)
+	go f.HostsScheduler()
 	crawlMetrics := metrics.Counter{}
 
 	sampler := metrics.NewSampler(&crawlMetrics)
@@ -44,7 +59,7 @@ func main() {
 	go lm.Run()
 
 	workerWg := sync.WaitGroup{}
-	for i := range 5 * runtime.NumCPU() {
+	for i := range numWorkers {
 		fmt.Printf("Worker %d started\n", i)
 		workerWg.Add(1)
 		go func() {
@@ -83,7 +98,6 @@ func worker(f *frontier.Frontier, lm *metrics.LatencyMetrics, crawlerMetrics *me
 		if !ok {
 			return
 		}
-		f.Limiter.Wait(context.Background())
 		crawlerMetrics.Claim()
 		var pageLatency metrics.PageLatency
 
