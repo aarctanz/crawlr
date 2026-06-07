@@ -23,6 +23,7 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
+*_test.go
 
 # env file
 .env
@@ -30,3 +31,5 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+.zed
+__debug_bin*
