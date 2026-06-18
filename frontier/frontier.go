@@ -144,47 +144,45 @@ func (f *Frontier) HostsScheduler() {
 			continue
 		}
 
-		for {
-			top := f.readyHosts[0]
-			if top.ready.After(time.Now()) {
-				f.mu.Unlock()
-				time.Sleep(time.Until(top.ready))
-				break
-			}
-			rh := heap.Pop(&f.readyHosts).(readyHost)
-			url, ok := f.queues[rh.hostname].Dequeue()
-			if !ok {
-				if f.queues[rh.hostname].Len() == 0 {
-					delete(f.queues, rh.hostname)
-					delete(f.inReadyHosts, rh.hostname)
-				} else {
-					heap.Push(&f.readyHosts, readyHost{hostname: rh.hostname, ready: time.Now()})
-				}
-				continue
-			}
-			if _, dup := f.claimed[url]; dup {
-				f.queuedCount--
-				if f.queues[rh.hostname].Len() == 0 {
-					delete(f.queues, rh.hostname)
-					delete(f.inReadyHosts, rh.hostname)
-				} else {
-					heap.Push(&f.readyHosts, readyHost{hostname: rh.hostname, ready: time.Now()})
-				}
-				continue
-			}
+		top := f.readyHosts[0]
+		if top.ready.After(time.Now()) {
+			f.mu.Unlock()
+			time.Sleep(time.Until(top.ready))
+			continue
+		}
 
+		rh := heap.Pop(&f.readyHosts).(readyHost)
+		url, ok := f.queues[rh.hostname].Dequeue()
+		if !ok {
+			delete(f.queues, rh.hostname)
+			delete(f.inReadyHosts, rh.hostname)
+			f.mu.Unlock()
+			continue
+		}
+
+		if _, dup := f.claimed[url]; dup {
+			f.queuedCount--
 			if f.queues[rh.hostname].Len() == 0 {
 				delete(f.queues, rh.hostname)
 				delete(f.inReadyHosts, rh.hostname)
 			} else {
-				heap.Push(&f.readyHosts, readyHost{hostname: rh.hostname, ready: time.Now().Add(f.crawlDelay)})
+				heap.Push(&f.readyHosts, readyHost{hostname: rh.hostname, ready: time.Now()})
 			}
-			f.claimed[url] = struct{}{}
-			f.activeWorkers++
-			f.queuedCount--
 			f.mu.Unlock()
-			f.urlChan <- url
-			break
+			continue
 		}
+
+		if f.queues[rh.hostname].Len() == 0 {
+			delete(f.queues, rh.hostname)
+			delete(f.inReadyHosts, rh.hostname)
+		} else {
+			heap.Push(&f.readyHosts, readyHost{hostname: rh.hostname, ready: time.Now().Add(f.crawlDelay)})
+		}
+
+		f.claimed[url] = struct{}{}
+		f.activeWorkers++
+		f.queuedCount--
+		f.mu.Unlock()
+		f.urlChan <- url
 	}
 }
