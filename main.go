@@ -55,7 +55,7 @@ func main() {
 	sampler := metrics.NewSampler(&crawlMetrics)
 	go sampler.Run()
 
-	lm := metrics.NewLatencyMetrics(maxPages)
+	lm := metrics.NewLatencyMetrics(numWorkers)
 	go lm.Run()
 
 	workerWg := sync.WaitGroup{}

@@ -30,9 +30,9 @@ var (
 	sizeBuckets    = []int{25, 50, 75, 100, 250, 500, 750, 1000, 1500, 2000, 2500, 5000, math.MaxInt}
 )
 
-func NewLatencyMetrics(maxPages int) *LatencyMetrics {
+func NewLatencyMetrics(numWorkers int) *LatencyMetrics {
 	return &LatencyMetrics{
-		latencyChannel:    make(chan PageLatency, maxPages),
+		latencyChannel:    make(chan PageLatency, 2*numWorkers),
 		fetchLatencyCount: make([]int, len(latencyBuckets)),
 		pageSizeKBCount:   make([]int, len(sizeBuckets)),
 		parseLatencyCount: make([]int, len(latencyBuckets)),
