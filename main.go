@@ -29,8 +29,8 @@ func main() {
 
 	seed := os.Args[1]
 	maxPages, err := strconv.Atoi(os.Args[2])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "max-pages must be an integer\n")
+	if err != nil || maxPages <= 0 {
+		fmt.Fprintf(os.Stderr, "max-pages must be a strictly positive integer\n")
 		os.Exit(1)
 	}
 	seedURL, err := url.Parse(seed)
@@ -48,7 +48,7 @@ func main() {
 	} else {
 		numWorkers = 20 * runtime.NumCPU()
 	}
-	f := frontier.NewFrontier(numWorkers, seed, seedURL.Host, maxPages, 500*time.Millisecond)
+	f := frontier.NewFrontier(numWorkers, seed, seedURL.Host, uint64(maxPages), 500*time.Millisecond)
 	go f.HostsScheduler()
 	crawlMetrics := metrics.Counter{}
 

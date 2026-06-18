@@ -7,12 +7,13 @@ import (
 )
 
 type Frontier struct {
-	crawled map[string]struct{}
 	claimed map[string]struct{}
-	mu      *sync.Mutex
-	cond    *sync.Cond
+	crawled uint64
 
-	maxPages      int
+	mu   *sync.Mutex
+	cond *sync.Cond
+
+	maxPages      uint64
 	activeWorkers int
 	isShutdown    bool
 
@@ -26,8 +27,7 @@ type Frontier struct {
 	urlChan chan string
 }
 
-func NewFrontier(numWorkers int, seedURL string, seedHost string, maxPages int, crawlDelay time.Duration) *Frontier {
-	crawled := make(map[string]struct{})
+func NewFrontier(numWorkers int, seedURL string, seedHost string, maxPages uint64, crawlDelay time.Duration) *Frontier {
 	claimed := make(map[string]struct{})
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
@@ -41,7 +41,6 @@ func NewFrontier(numWorkers int, seedURL string, seedHost string, maxPages int, 
 	return &Frontier{
 		maxPages:     maxPages,
 		queues:       map[string]*Queue{seedHost: queue},
-		crawled:      crawled,
 		claimed:      claimed,
 		mu:           &mu,
 		cond:         cond,
@@ -67,7 +66,7 @@ func (f *Frontier) Next() (string, bool) {
 		return "", false
 	}
 
-	if len(f.crawled) >= f.maxPages {
+	if f.crawled >= f.maxPages {
 		f.Shutdown()
 		f.mu.Unlock()
 		return "", false
@@ -85,9 +84,9 @@ func (f *Frontier) Fail(url string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	f.crawled[url] = struct{}{}
+	f.crawled += 1
 	f.activeWorkers--
-	if len(f.crawled) >= f.maxPages {
+	if f.crawled >= f.maxPages {
 		f.Shutdown()
 	}
 	f.cond.Broadcast()
@@ -98,9 +97,9 @@ func (f *Frontier) Done(url string, links map[string][]string) int {
 	defer f.mu.Unlock()
 
 	f.activeWorkers--
-	f.crawled[url] = struct{}{}
+	f.crawled += 1
 
-	if len(f.crawled) >= f.maxPages {
+	if f.crawled >= f.maxPages {
 		f.Shutdown()
 		return 0
 	}
