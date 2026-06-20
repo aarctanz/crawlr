@@ -53,7 +53,16 @@ func NewFrontier(numWorkers int, seedURL string, seedHost string, maxPages uint6
 	}
 }
 
+// first acquire the lock then shutdown
 func (f *Frontier) Shutdown() {
+	f.mu.Lock()
+	f.isShutdown = true
+	f.cond.Broadcast()
+	f.mu.Unlock()
+}
+
+// shutdown only when lock is held, for internal use
+func (f *Frontier) shutdownWithLock() {
 	f.isShutdown = true
 	f.cond.Broadcast()
 }
@@ -67,7 +76,7 @@ func (f *Frontier) Next() (string, bool) {
 	}
 
 	if f.crawled >= f.maxPages {
-		f.Shutdown()
+		f.shutdownWithLock()
 		f.mu.Unlock()
 		return "", false
 	}
@@ -87,7 +96,7 @@ func (f *Frontier) Fail(url string) {
 	f.crawled += 1
 	f.activeWorkers--
 	if f.crawled >= f.maxPages {
-		f.Shutdown()
+		f.shutdownWithLock()
 	}
 	f.cond.Broadcast()
 }
@@ -100,7 +109,7 @@ func (f *Frontier) Done(url string, links map[string][]string) int {
 	f.crawled += 1
 
 	if f.crawled >= f.maxPages {
-		f.Shutdown()
+		f.shutdownWithLock()
 		return 0
 	}
 
@@ -134,7 +143,7 @@ func (f *Frontier) HostsScheduler() {
 
 		if len(f.readyHosts) == 0 {
 			if f.activeWorkers == 0 && f.queuedCount == 0 {
-				f.Shutdown()
+				f.shutdownWithLock()
 				f.mu.Unlock()
 				continue
 			}

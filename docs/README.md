@@ -48,10 +48,10 @@ Principle: every feature needs a measured reason. Order is rough priority; later
 - [x] Per-host rate limiting — `HostsScheduler` + `readyHostHeap`, `crawlDelay` spacing
 - [x] URL normalization + per-host link grouping in parser
 - [x] Metrics — atomic counters, 5 s sampler → `stats.json`, latency histograms
+- [x] Context & Cancellation — Timeout or Forceful shutdown by controller.
+- [x] Graceful shutdown — write metrics in case of `ctrl+c`
 
 **Next**
-- [ ] Context & Cancellation — Timeout or Forceful shutdown by controller.
-- [ ] Graceful shutdown — write metrics in case of `ctrl+c`
 - [ ] Worker utilization metric — fraction of wall-clock blocked on `Next()` vs. fetching. Gates scale work: to find out if the crawler is host-rate-limited (scale pointless) or throughput-bound.
 - [ ] Custom User-Agent + more refined `http.Client` — timeouts, connection pooling. 
 - [ ] Error type segregation — typed errors (DNS, timeouts, non-2xx, parse) so `Fail()` can branch. Needed for retry/backoff.

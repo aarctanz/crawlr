@@ -2,14 +2,17 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/aarctanz/crawlr/frontier"
@@ -67,6 +70,27 @@ func main() {
 			worker(f, lm, &crawlMetrics)
 		}()
 	}
+
+	// Context based cancellation for a timeout
+	// reduce duration when testing for deadlock
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+	defer cancel()
+	go func() {
+		<-ctx.Done()
+		fmt.Println("Timeout reached, shutting down...")
+		f.Shutdown()
+	}()
+
+	// Graceful shutdown in case of ctrl + c
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		<-signalChan
+		fmt.Println("Received termination signal, shutting down...")
+		signal.Stop(signalChan)
+		f.Shutdown()
+	}()
 
 	workerWg.Wait()
 	lm.WaitAndClose()
