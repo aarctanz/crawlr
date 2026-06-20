@@ -36,3 +36,27 @@ Raw time-series for each run lives in `data/<stage>/stats.json` (sampled every 5
 ## Method note
 
 Each run writes `stats.json` to the repo root; copy it into `data/<stage>/stats.json` before the next run or it gets overwritten. The runs are nondeterministic (link discovery order varies), so success *rate* isn't directly comparable across stages — compare throughput, goroutines, and heap.
+
+## Roadmap
+
+Principle: every feature needs a measured reason. Order is rough priority; later items are conditional on earlier results.
+
+**Done**
+- [x] Sequential crawler
+- [x] Concurrent fetch via buffered channel
+- [x] Slice-backed unbounded frontier queue (`head`-index compaction)
+- [x] Per-host rate limiting — `HostsScheduler` + `readyHostHeap`, `crawlDelay` spacing
+- [x] URL normalization + per-host link grouping in parser
+- [x] Metrics — atomic counters, 5 s sampler → `stats.json`, latency histograms
+
+**Next**
+- [ ] Context & Cancellation — Timeout or Forceful shutdown by controller.
+- [ ] Graceful shutdown — write metrics in case of `ctrl+c`
+- [ ] Worker utilization metric — fraction of wall-clock blocked on `Next()` vs. fetching. Gates scale work: to find out if the crawler is host-rate-limited (scale pointless) or throughput-bound.
+- [ ] Custom User-Agent + more refined `http.Client` — timeouts, connection pooling. 
+- [ ] Error type segregation — typed errors (DNS, timeouts, non-2xx, parse) so `Fail()` can branch. Needed for retry/backoff.
+- [ ] Per-host concurrency semaphore — burst cap, distinct from `crawlDelay` (spacing).
+- [ ] robots.txt — respectful crawling.
+- [ ] Pipeline — Decompose into stages, fetch -> parser -> dedup and enque.
+- [ ] Persistence — crash-recovery/resume, on-disk dedup, output storage.
+- [ ] Scale — multi machine crawling.
