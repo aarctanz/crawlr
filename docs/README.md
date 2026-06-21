@@ -49,7 +49,7 @@ Principle: every feature needs a measured reason. Order is rough priority; later
 - [x] URL normalization + per-host link grouping in parser
 - [x] Metrics — atomic counters, 5 s sampler → `stats.json`, latency histograms
 - [x] Context & Cancellation — Timeout or Forceful shutdown by controller.
-- [x] Graceful shutdown — write metrics in case of `ctrl+c`
+- [x] Graceful shutdown — Complete in-flight requests, write metrics in case of `ctrl+c`
 
 **Next**
 - [ ] Worker utilization metric — fraction of wall-clock blocked on `Next()` vs. fetching. Gates scale work: to find out if the crawler is host-rate-limited (scale pointless) or throughput-bound.
