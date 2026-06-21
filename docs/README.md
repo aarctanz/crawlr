@@ -47,7 +47,7 @@ Principle: every feature needs a measured reason. Order is rough priority; later
 - [x] Slice-backed unbounded frontier queue (`head`-index compaction)
 - [x] Per-host rate limiting — `HostsScheduler` + `readyHostHeap`, `crawlDelay` spacing
 - [x] URL normalization + per-host link grouping in parser
-- [x] Metrics — atomic counters, 5 s sampler → `stats.json`, latency histograms
+- [x] Metrics — atomic counters, 5s sampler → `stats.json`, latency histograms
 - [x] Context & Cancellation — Timeout or Forceful shutdown by controller.
 - [x] Graceful shutdown — Complete in-flight requests, write metrics in case of `ctrl+c`
 

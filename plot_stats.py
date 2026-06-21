@@ -5,6 +5,8 @@ Produces five PNGs next to the input:
     queued_vs_claimed.png   links discovered vs picked up by workers
     crawled_vs_success.png  pages completed vs fetched successfully
     errors.png              total failures vs HTTP 429s
+    throughput_mb.png       network goodput MB/s, raw + 10s rolling mean
+    bytes_cumulative.png    cumulative MB fetched (slope = bandwidth)
     goroutines.png          goroutine count over the run
     heap_mb.png             heap allocation over the run
 
@@ -41,8 +43,8 @@ SPINE = "#d4d8de"  # the two spines we keep
 
 plt.rcParams.update(
     {
-        "font.family": "sans-serif",
-        "font.sans-serif": ["Inter", "DejaVu Sans", "Helvetica", "Arial"],
+        "font.family": "monospace",
+        "font.monospace": ["FiraCode Nerd Font", "Fira Code", "DejaVu Sans Mono"],
         "figure.facecolor": "white",
         "axes.facecolor": "white",
     }
@@ -73,6 +75,7 @@ def load_samples(stats_path: Path) -> list[dict]:
                 "crawled": s.get("Crawled", s.get("PagesTotal", 0)),
                 "success": s.get("Success", 0),
                 "http429": s.get("HTTP429", 0),
+                "bytes": s.get("BytesFetched", 0),
                 "active": s.get("ActiveWorkers", 0),
                 "heap": s.get("HeapMB", 0.0),
                 "goroutines": s.get("Goroutines", 0),
@@ -84,6 +87,29 @@ def load_samples(stats_path: Path) -> list[dict]:
 def format_runtime(seconds: int) -> str:
     minutes, secs = divmod(int(seconds), 60)
     return f"{minutes}m {secs}s" if minutes else f"{secs}s"
+
+
+def per_interval_rate(values: list, elapsed: list) -> list[float]:
+    """Discrete derivative delta(value)/delta(time) per sample.
+
+    First point has no predecessor -> 0. Duplicate timestamps (dt<=0) carry
+    the previous rate forward instead of dividing by zero.
+    """
+    rate = [0.0]
+    for i in range(1, len(values)):
+        dt = elapsed[i] - elapsed[i - 1]
+        rate.append((values[i] - values[i - 1]) / dt if dt > 0 else rate[-1])
+    return rate
+
+
+def rolling_mean(values: list, window: int) -> list[float]:
+    """Centred moving average. Window in samples; edges shrink the window."""
+    half = window // 2
+    out = []
+    for i in range(len(values)):
+        seg = values[max(0, i - half) : i + half + 1]
+        out.append(sum(seg) / len(seg))
+    return out
 
 
 def footer_text(samples: list[dict]) -> str:
@@ -224,6 +250,9 @@ def main() -> None:
     x = [s["elapsed"] for s in samples]
     col = lambda key: [s[key] for s in samples]
     failed = [s["crawled"] - s["success"] for s in samples]
+    mb_per_s = [r / 1e6 for r in per_interval_rate(col("bytes"), x)]
+    mb_per_s_smooth = rolling_mean(mb_per_s, 5)  # ~10s window at 2s sampling
+    cum_mb = [b / 1e6 for b in col("bytes")]
 
     make_chart(
         out_dir / "queued_vs_claimed.png",
@@ -268,6 +297,29 @@ def main() -> None:
         title="Heap Memory",
         subtitle="Heap allocation across the crawl",
         ylabel="Heap memory (MB)",
+        footer=footer,
+        integer_y=False,
+    )
+    make_chart(
+        out_dir / "throughput_mb.png",
+        x,
+        [
+            ("MB/s (raw)", mb_per_s, FAINT),
+            ("MB/s (10s mean)", mb_per_s_smooth, ORANGE),
+        ],
+        title="Throughput",
+        subtitle="Network goodput, per-interval (successful reads only)",
+        ylabel="MB/s",
+        footer=footer,
+        integer_y=False,
+    )
+    make_chart(
+        out_dir / "bytes_cumulative.png",
+        x,
+        [("Fetched", cum_mb, ORANGE)],
+        title="Bytes Fetched",
+        subtitle="Cumulative goodput — slope is bandwidth, flattening is slowdown",
+        ylabel="MB (cumulative)",
         footer=footer,
         integer_y=False,
     )

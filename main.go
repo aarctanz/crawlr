@@ -163,6 +163,7 @@ func worker(f *frontier.Frontier, lm *metrics.LatencyMetrics, crawlerMetrics *me
 		}
 
 		pageLatency.PageSizeKB = int(len(body) / 1024)
+		crawlerMetrics.AddBytes(int64(len(body)))
 
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		links, parseTime := parser.Parse(resp, base)
