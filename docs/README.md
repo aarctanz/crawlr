@@ -9,19 +9,25 @@ One file per stage of the crawler. Each records **what changed**, **why**, and a
 | 1 | Sequential crawler | [01-sequential.md](01-sequential.md) | `5bf4f65` |
 | 2 | Concurrent — buffered channel | [02-buffered-channel.md](02-buffered-channel.md) | `90fb362` |
 | 3 | Concurrent — slice-backed unbounded queue | [03-slice-queue.md](03-slice-queue.md) | `35018b2` |
+| 4 | Cranking workers — the HTTP 429 wall | [04-http429-pushback.md](04-http429-pushback.md) | `2656acd` |
+| 5 | Global rate limiter (wrong granularity) | [05-global-rate-limit.md](05-global-rate-limit.md) | `b18cd27` |
 
 ## Headline comparison
 
 On same machine.
 
-| Metric | sequential | buffered-channel | slice-queue |
-|---|---|---|---|
-| pages crawled | 1,000 | 15,000 | 15,079 |
-| wall time | 938 s | 116 s | 146 s |
-| **pages/min** | 64 | **7,826** | **6,197** |
-| success/min | 63 | 6,658 | 5,130 |
-| **peak goroutines** | 22 | **11,726** | **631** |
-| peak heap (MB) | 46 | 1074 | 673 |
+| Metric | sequential | buffered-channel | slice-queue | 2k-workers (429) | global-limit |
+|---|---|---|---|---|---|
+| pages crawled | 1,000 | 15,000 | 15,079 | 51,999 | 6,999 |
+| wall time | 938 s | 116 s | 146 s | ~45 s | 3,497 s |
+| **pages/min** | 64 | **7,826** | **6,197** | **~69,000** | 120 |
+| success/min | 63 | 6,658 | 5,130 | ~33,000 | 106 |
+| success rate | ~98% | — | — | **48%** | 88% |
+| HTTP 429s | 0 | — | — | **17,958** | 154 |
+| **peak goroutines** | 22 | **11,726** | **631** | 5,799 | 2,053 |
+| peak heap (MB) | 46 | 1074 | 673 | 1,229 | 144 |
+
+Stages 4–5 explore the **politeness / throughput trade**. Stage 4 maxes throughput (2,000 workers, no limit) and pays with a 48% success rate as hosts return `429`. Stage 5 over-corrects with one global limiter — polite (154 `429`s) but pinned at the bucket rate (120/min). Per-host rate limiting (current `HostsScheduler`) is the resolution.
 
 Raw time-series for each run lives in `docs/data/<stage>/stats.json` (sampled every 5 s), with `goroutines.png`, `pages_crawled.png`, `heap_mb.png` rendered alongside.
 
