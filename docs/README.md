@@ -23,19 +23,19 @@ On same machine.
 | **peak goroutines** | 22 | **11,726** | **631** |
 | peak heap (MB) | 46 | 1074 | 673 |
 
-Raw time-series for each run lives in `data/<stage>/stats.json` (sampled every 5 s), with `goroutines.png`, `pages_crawled.png`, `heap_mb.png` rendered alongside.
+Raw time-series for each run lives in `docs/data/<stage>/stats.json` (sampled every 5 s), with `goroutines.png`, `pages_crawled.png`, `heap_mb.png` rendered alongside.
 
 
 ## Run config
 
 - Machine: 20 logical threads (10 physical cores)
-- Workers: 4 × `runtime.NumCPU()` *(note: committed `main.go` spawns `runtime.NumCPU()`; the benchmark runs used a 4× multiplier — set this when reproducing)*
+- Workers: 4 × `runtime.NumCPU()` *(note: committed `cmd/crawlr/main.go` spawns `runtime.NumCPU()`; the benchmark runs used a 4× multiplier — set this when reproducing)*
 - `max-pages`: 1,000 (sequential), 15,000 (concurrent)
 - Stats sampled every 5 s by a ticker goroutine; see `CrawlerStats.update`.
 
 ## Method note
 
-Each run writes `stats.json` to the repo root; copy it into `data/<stage>/stats.json` before the next run or it gets overwritten. The runs are nondeterministic (link discovery order varies), so success *rate* isn't directly comparable across stages — compare throughput, goroutines, and heap.
+Each run writes `out/stats.json`; copy it into `docs/data/<stage>/stats.json` to preserve it as design-log evidence. The runs are nondeterministic (link discovery order varies), so success *rate* isn't directly comparable across stages — compare throughput, goroutines, and heap.
 
 ## Roadmap
 

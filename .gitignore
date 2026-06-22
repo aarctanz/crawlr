@@ -23,7 +23,6 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
-*_test.go
 
 # env file
 .env
@@ -33,3 +32,7 @@ go.work.sum
 # .vscode/
 .zed
 __debug_bin*
+
+# Run artifacts (stats.json + generated charts)
+out/
+crawlr

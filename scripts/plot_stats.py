@@ -15,10 +15,10 @@ gap is the quantity worth reading: unclaimed backlog, failed pages, non-429
 failures respectively. Each chart carries a two-line run summary in the footer.
 
 Usage:
-    .venv/bin/python plot_stats.py [STATS_JSON_OR_DIR] [-o OUTPUT_DIR]
+    .venv/bin/python scripts/plot_stats.py [STATS_JSON_OR_DIR] [-o OUTPUT_DIR]
 
-    .venv/bin/python plot_stats.py                  # ./stats.json -> ./
-    .venv/bin/python plot_stats.py data/sequential  # a saved run
+    .venv/bin/python scripts/plot_stats.py                       # out/stats.json -> out/
+    .venv/bin/python scripts/plot_stats.py docs/data/sequential  # a saved run
 """
 
 from __future__ import annotations
@@ -233,8 +233,8 @@ def main() -> None:
     parser.add_argument(
         "stats",
         nargs="?",
-        default="stats.json",
-        help="path to stats.json, or a directory containing one (default: stats.json)",
+        default="out/stats.json",
+        help="path to stats.json, or a directory containing one (default: out/stats.json)",
     )
     parser.add_argument(
         "-o", "--out", help="output directory (default: alongside stats.json)"

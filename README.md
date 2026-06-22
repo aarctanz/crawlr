@@ -13,10 +13,10 @@ You need Go 1.26 or newer.
 ```bash
 git clone https://github.com/aarctanz/crawlr.git
 cd crawlr
-go run main.go https://example.com <max-pages>  # go run main.go https://example.com 15000
+go run ./cmd/crawlr https://example.com <max-pages>  # go run ./cmd/crawlr https://example.com 15000
 ```
 
-Crawlr logs each fetched url with its metrics to the stdout. After completion, it prints a summary and writes a `stats.json` file holding the full run timeline, sampled every five seconds.
+Crawlr logs each fetched url with its metrics to the stdout. After completion, it prints a summary and writes `out/stats.json` holding the full run timeline, sampled every five seconds.
 
 ---
 

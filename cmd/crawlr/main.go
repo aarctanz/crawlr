@@ -15,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/aarctanz/crawlr/frontier"
-	"github.com/aarctanz/crawlr/metrics"
-	"github.com/aarctanz/crawlr/parser"
+	"github.com/aarctanz/crawlr/internal/frontier"
+	"github.com/aarctanz/crawlr/internal/metrics"
+	"github.com/aarctanz/crawlr/internal/parser"
 )
 
 var httpClient = &http.Client{
@@ -103,7 +103,11 @@ func main() {
 	fmt.Printf("crawled %d pages, total time: %.2fs\n", crawlMetrics.Crawled.Load(), totalTime.Seconds())
 	fmt.Printf("Success: %d\n", crawlMetrics.Success.Load())
 
-	file, err := os.OpenFile("stats.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err := os.MkdirAll("out", 0755); err != nil {
+		fmt.Println(err)
+		return
+	}
+	file, err := os.OpenFile("out/stats.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		fmt.Println(err)
 		return
