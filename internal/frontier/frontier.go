@@ -27,28 +27,42 @@ type Frontier struct {
 	urlChan chan string
 }
 
-func NewFrontier(numWorkers int, seedURL string, seedHost string, maxPages uint64, crawlDelay time.Duration) *Frontier {
+func NewFrontier(numWorkers int, seeds map[string][]string, maxPages uint64, crawlDelay time.Duration) *Frontier {
 	claimed := make(map[string]struct{})
 	var mu sync.Mutex
 	cond := sync.NewCond(&mu)
 
-	queue := NewQueue()
-	queue.Enqueue([]string{seedURL})
+	queues := make(map[string]*Queue)
+
 	readyHosts := readyHostHeap{}
 	heap.Init(&readyHosts)
-	heap.Push(&readyHosts, readyHost{hostname: seedHost, ready: time.Now()})
+
+	inReadyHosts := make(map[string]struct{})
+
+	queuedCount := 0
+	for host, urls := range seeds {
+		if _, ok := queues[host]; !ok {
+			queues[host] = NewQueue()
+		}
+		queues[host].Enqueue(urls)
+		if _, ok := inReadyHosts[host]; !ok {
+			inReadyHosts[host] = struct{}{}
+			heap.Push(&readyHosts, readyHost{hostname: host, ready: time.Now()})
+		}
+		queuedCount += len(urls)
+	}
 
 	return &Frontier{
 		maxPages:     maxPages,
-		queues:       map[string]*Queue{seedHost: queue},
+		queues:       queues,
 		claimed:      claimed,
 		mu:           &mu,
 		cond:         cond,
 		isShutdown:   false,
 		urlChan:      make(chan string, numWorkers*2),
-		queuedCount:  1,
+		queuedCount:  queuedCount,
 		readyHosts:   readyHosts,
-		inReadyHosts: make(map[string]struct{}),
+		inReadyHosts: inReadyHosts,
 		crawlDelay:   crawlDelay,
 	}
 }

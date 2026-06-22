@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,33 +27,57 @@ var httpClient = &http.Client{
 }
 
 func main() {
-	if len(os.Args) < 3 {
-		fmt.Fprintf(os.Stderr, "usage: crawlr <seed-url> <max-pages> [num-workers]\n")
+	const defaultSeed = "https://crawler-test.com/"
+
+	var (
+		seedsFile = flag.String("seeds", "", "path to a file of seed URLs, one per line (# comments and blank lines ignored)")
+		singleURL = flag.String("url", "", "a single seed URL (-seeds takes priority if both are set)")
+		maxPages  = flag.Uint64("pages", 1000, "stop after crawling this many pages (must be > 0)")
+		durMins   = flag.Int("duration", 0, "stop after this many minutes of wall-clock time (0 = no limit)")
+		workers   = flag.Int("workers", 0, "number of worker goroutines (0 = 4 * NumCPU)")
+	)
+	flag.Parse()
+
+	if *maxPages == 0 {
+		fmt.Fprintf(os.Stderr, "pages must be > 0\n")
+		os.Exit(1)
+	}
+	if *durMins < 0 {
+		fmt.Fprintf(os.Stderr, "duration must be > 0\n")
+		os.Exit(1)
+	}
+	if *workers < 0 {
+		fmt.Fprintf(os.Stderr, "workers must be > 0\n")
 		os.Exit(1)
 	}
 
-	seed := os.Args[1]
-	maxPages, err := strconv.Atoi(os.Args[2])
-	if err != nil || maxPages <= 0 {
-		fmt.Fprintf(os.Stderr, "max-pages must be a strictly positive integer\n")
-		os.Exit(1)
+	// Seed source: -seeds takes priority over -url when both are given. If
+	// neither is given, fall back to the default seed.
+	var seeds map[string][]string
+	var err error
+	switch {
+	case *seedsFile != "":
+		seeds, err = readSeeds(*seedsFile)
+	case *singleURL != "":
+		seeds, err = parseSeed(*singleURL)
+	default:
+		seeds, err = parseSeed(defaultSeed)
 	}
-	seedURL, err := url.Parse(seed)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "seed-url must be a valid URL\n")
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	var numWorkers int
-	if len(os.Args) >= 4 {
-		numWorkers, err = strconv.Atoi(os.Args[3])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "num-workers must be an integer\n")
-			os.Exit(1)
-		}
-	} else {
-		numWorkers = 20 * runtime.NumCPU()
+	if len(seeds) == 0 {
+		fmt.Fprintf(os.Stderr, "no valid seed URLs found\n")
+		os.Exit(1)
 	}
-	f := frontier.NewFrontier(numWorkers, seed, seedURL.Host, uint64(maxPages), 500*time.Millisecond)
+
+	numWorkers := *workers
+	if numWorkers == 0 {
+		numWorkers = 4 * runtime.NumCPU()
+	}
+
+	f := frontier.NewFrontier(numWorkers, seeds, *maxPages, 500*time.Millisecond)
 	go f.HostsScheduler()
 	crawlMetrics := metrics.Counter{}
 
@@ -71,15 +97,19 @@ func main() {
 		}()
 	}
 
-	// Context based cancellation for a timeout
-	// reduce duration when testing for deadlock
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-	defer cancel()
-	go func() {
-		<-ctx.Done()
-		fmt.Println("Timeout reached, shutting down...")
-		f.Shutdown()
-	}()
+	// Time-based termination: stop after -duration minutes (whichever comes
+	// first relative to -pages). Skipped entirely when duration == 0.
+	if *durMins > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*durMins)*time.Minute)
+		defer cancel()
+		go func() {
+			<-ctx.Done()
+			if ctx.Err() == context.DeadlineExceeded {
+				fmt.Println("Duration reached, shutting down...")
+				f.Shutdown()
+			}
+		}()
+	}
 
 	// Graceful shutdown in case of ctrl + c
 	signalChan := make(chan os.Signal, 1)
@@ -117,6 +147,55 @@ func main() {
 	if err != nil {
 		fmt.Println(err)
 	}
+}
+
+// parseSeed validates a single raw URL and returns it grouped by host.
+func parseSeed(raw string) (map[string][]string, error) {
+	host, normalized, err := parseLine(raw)
+	if err != nil {
+		return nil, err
+	}
+	return map[string][]string{host: {normalized}}, nil
+}
+
+// readSeeds reads a seed file (one URL per line; blank lines and lines
+// starting with # are ignored) and returns the URLs grouped by host.
+func readSeeds(path string) (map[string][]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	seeds := make(map[string][]string)
+	scanner := bufio.NewScanner(file)
+	for line := 1; scanner.Scan(); line++ {
+		raw := strings.TrimSpace(scanner.Text())
+		if raw == "" || strings.HasPrefix(raw, "#") {
+			continue
+		}
+		host, perHost, err := parseLine(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s line %d: %w", path, line, err)
+		}
+		seeds[host] = append(seeds[host], perHost)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return seeds, nil
+}
+
+// parseLine validates one seed URL, returning its host and the URL itself.
+func parseLine(raw string) (host, normalized string, err error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid URL %q: %w", raw, err)
+	}
+	if u.Scheme == "" || u.Host == "" {
+		return "", "", fmt.Errorf("URL %q must be absolute (scheme + host)", raw)
+	}
+	return u.Host, raw, nil
 }
 
 func worker(f *frontier.Frontier, lm *metrics.LatencyMetrics, crawlerMetrics *metrics.Counter) {
