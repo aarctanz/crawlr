@@ -77,7 +77,7 @@ func main() {
 		numWorkers = 4 * runtime.NumCPU()
 	}
 
-	f := frontier.NewFrontier(numWorkers, seeds, *maxPages, 500*time.Millisecond)
+	f := frontier.NewFrontier(numWorkers, seeds, *maxPages, 10*time.Second)
 	go f.HostsScheduler()
 	crawlMetrics := metrics.Counter{}
 

@@ -35,4 +35,3 @@ __debug_bin*
 
 # Run artifacts (stats.json + generated charts)
 out/
-crawlr
